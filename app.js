@@ -7,76 +7,72 @@ const DEFAULT_CATEGORIES = [
     { id: 'cat_4', name: 'Продукты' },
     { id: 'cat_5', name: 'Налоги' },
 ];
-
 let state = {
     currentDate: new Date(),
     categories: [],
     income: {}, // { 'YYYY-MM-DD': amount }
     expenses: {} // { 'YYYY-MM-DD': [{ id, name, categoryId, amount }] }
 };
-
 function loadState() {
     const cats = localStorage.getItem(`${STORE_PREFIX}_categories`);
     state.categories = cats ? JSON.parse(cats) : [...DEFAULT_CATEGORIES];
-
     const inc = localStorage.getItem(`${STORE_PREFIX}_income`);
     state.income = inc ? JSON.parse(inc) : {};
-
     const exp = localStorage.getItem(`${STORE_PREFIX}_expenses`);
     state.expenses = exp ? JSON.parse(exp) : {};
     
     // Auto-save initial defaults if empty
     if (!cats) saveState('categories');
+    buildAutocompleteCache();
 }
-
+let autocompleteCache = new Set();
+function buildAutocompleteCache() {
+    autocompleteCache.clear();
+    Object.values(state.expenses).forEach(dayArr => {
+        dayArr.forEach(exp => {
+            if (exp.name) autocompleteCache.add(exp.name.trim());
+        });
+    });
+}
 function saveState(key) {
     if (key === 'categories') localStorage.setItem(`${STORE_PREFIX}_categories`, JSON.stringify(state.categories));
     if (key === 'income') localStorage.setItem(`${STORE_PREFIX}_income`, JSON.stringify(state.income));
     if (key === 'expenses') localStorage.setItem(`${STORE_PREFIX}_expenses`, JSON.stringify(state.expenses));
 }
-
 // === Utils ===
 function formatDateStr(date) {
     const d = new Date(date);
     let month = '' + (d.getMonth() + 1);
     let day = '' + d.getDate();
     let year = d.getFullYear();
-
     if (month.length < 2) month = '0' + month;
     if (day.length < 2) day = '0' + day;
-
     return [year, month, day].join('-');
 }
-
 function parseLocalDate(dateStr) {
     if (!dateStr) return new Date();
     const parts = dateStr.split('-');
     if (parts.length !== 3) return new Date(dateStr);
     return new Date(parts[0], parts[1] - 1, parts[2]);
 }
-
 function formatNumber(num) {
     if (!num) return '';
     return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ");
 }
-
 function parseNumber(str) {
     if (!str) return 0;
     return parseInt(str.replace(/\s/g, ''), 10) || 0;
 }
-
 // === Navigation ===
 function initNavigation() {
     const navItems = document.querySelectorAll('.nav-item');
     const views = document.querySelectorAll('.view');
-
     navItems.forEach(item => {
         item.addEventListener('click', () => {
             const targetId = item.getAttribute('data-target');
             
             navItems.forEach(n => n.classList.remove('active'));
             item.classList.add('active');
-
             views.forEach(v => {
                 if (v.id === targetId) {
                     v.classList.add('active');
@@ -84,7 +80,6 @@ function initNavigation() {
                     v.classList.remove('active');
                 }
             });
-
             // Refresh specific views on enter
             if (targetId === 'view-data') {
                 renderDataEntry();
@@ -96,7 +91,6 @@ function initNavigation() {
         });
     });
 }
-
 // === Calendar ===
 function initCalendar() {
     const btnPrev = document.getElementById('cal-prev');
@@ -111,25 +105,19 @@ function initCalendar() {
         state.currentDate.setMonth(state.currentDate.getMonth() + 1);
         renderCalendar();
     });
-
     renderCalendar();
 }
-
 function renderCalendar() {
     const monthYearStr = state.currentDate.toLocaleString('ru-RU', { month: 'long', year: 'numeric' });
     document.getElementById('cal-month-year').textContent = monthYearStr.charAt(0).toUpperCase() + monthYearStr.slice(1);
-
     const grid = document.getElementById('cal-days-grid');
     grid.innerHTML = '';
-
     // Generate a simple week view for prototype (centered around selected date)
     // For a full app, we would make a swipable calendar. Here we show 7 days.
     const startOfWeek = new Date(state.currentDate);
     const dayOfWeek = startOfWeek.getDay() === 0 ? 6 : startOfWeek.getDay() - 1; // Mon=0
     startOfWeek.setDate(startOfWeek.getDate() - dayOfWeek);
-
     const weekdays = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
-
     for (let i = 0; i < 7; i++) {
         const d = new Date(startOfWeek);
         d.setDate(d.getDate() + i);
@@ -145,7 +133,6 @@ function renderCalendar() {
         if (state.income[dateStr] > 0 || (state.expenses[dateStr] && state.expenses[dateStr].some(e => e.amount > 0))) {
             el.classList.add('has-data');
         }
-
         el.innerHTML = `
             <span class="weekday">${weekdays[i]}</span>
             <span class="day-num">${d.getDate()}</span>
@@ -160,7 +147,6 @@ function renderCalendar() {
         grid.appendChild(el);
     }
 }
-
 // === Data Entry ===
 function setupInputFormatting(inputEl, callback) {
     inputEl.addEventListener('input', (e) => {
@@ -176,7 +162,6 @@ function setupInputFormatting(inputEl, callback) {
         if (callback) callback(parseNumber(e.target.value));
     });
 }
-
 function renderDataEntry() {
     const dateStr = formatDateStr(state.currentDate);
     
@@ -194,7 +179,6 @@ function renderDataEntry() {
         saveState('income');
         renderCalendar(); // Update dots
     });
-
     // Expenses
     const rowsContainer = document.getElementById('expenses-rows');
     rowsContainer.innerHTML = '';
@@ -209,7 +193,6 @@ function renderDataEntry() {
         state.categories.forEach(cat => {
             catOptions += `<option value="${cat.id}" ${cat.id === exp.categoryId ? 'selected' : ''}>${cat.name}</option>`;
         });
-
         row.innerHTML = `
             <div class="row-num">${idx + 1}</div>
             <div>
@@ -231,7 +214,6 @@ function renderDataEntry() {
         `;
         
         rowsContainer.appendChild(row);
-
         const nameInput = row.querySelector('.exp-name');
         const catSelect = row.querySelector('.exp-cat');
         const amountInput = row.querySelector('.exp-amount');
@@ -243,17 +225,16 @@ function renderDataEntry() {
         });
         nameInput.addEventListener('blur', (e) => {
             setTimeout(() => { document.getElementById('autocomplete-popup').classList.add('hidden'); }, 200);
-            updateExpense(dateStr, idx, 'name', e.target.value);
+            const val = e.target.value.trim();
+            updateExpense(dateStr, idx, 'name', val);
+            if (val) autocompleteCache.add(val);
         });
-
         catSelect.addEventListener('change', (e) => {
             updateExpense(dateStr, idx, 'categoryId', e.target.value);
         });
-
         setupInputFormatting(amountInput, (val) => {
             updateExpense(dateStr, idx, 'amount', val);
         });
-
         // Clear row logic
         const clearBtn = row.querySelector('.btn-clear-row');
         clearBtn.addEventListener('click', () => {
@@ -263,10 +244,8 @@ function renderDataEntry() {
             document.getElementById('autocomplete-popup').classList.add('hidden');
         });
     });
-
     updateExpenseTotal(dateStr);
 }
-
 function updateExpense(dateStr, index, field, value) {
     if (!state.expenses[dateStr]) {
         state.expenses[dateStr] = Array(15).fill().map(() => ({ name: '', categoryId: '', amount: 0 }));
@@ -279,13 +258,11 @@ function updateExpense(dateStr, index, field, value) {
         renderCalendar(); // Update dots
     }
 }
-
 function updateExpenseTotal(dateStr) {
     const exps = state.expenses[dateStr] || [];
     const total = exps.reduce((acc, curr) => acc + (parseInt(curr.amount) || 0), 0);
     document.getElementById('expense-total').textContent = `${formatNumber(total)} ₽`;
 }
-
 // === Autocomplete ===
 function handleAutocomplete(inputEl, index, dateStr) {
     const val = inputEl.value.toLowerCase();
@@ -297,29 +274,22 @@ function handleAutocomplete(inputEl, index, dateStr) {
         popup.classList.add('hidden');
         return;
     }
-
-    // Collect unique names from all history
     const allNames = new Set();
-    Object.values(state.expenses).forEach(dayArr => {
-        dayArr.forEach(exp => {
-            if (exp.name && exp.name.toLowerCase().includes(val) && exp.name !== inputEl.value) {
-                allNames.add(exp.name);
-            }
-        });
+    Array.from(autocompleteCache).forEach(name => {
+        if (name.toLowerCase().includes(val) && name !== inputEl.value) {
+            allNames.add(name);
+        }
     });
-
     if (allNames.size === 0) {
         popup.classList.add('hidden');
         return;
     }
-
     // Position popup
     const rect = inputEl.getBoundingClientRect();
     popup.style.top = `${rect.bottom + window.scrollY + 4}px`;
     popup.style.left = `${rect.left + window.scrollX}px`;
     popup.style.width = `${rect.width}px`;
     popup.classList.remove('hidden');
-
     Array.from(allNames).slice(0, 5).forEach(name => {
         const li = document.createElement('li');
         li.textContent = name;
@@ -335,11 +305,15 @@ function handleAutocomplete(inputEl, index, dateStr) {
                 select.value = match.categoryId;
                 updateExpense(dateStr, index, 'categoryId', match.categoryId);
             }
+            // Move focus to Amount input
+            setTimeout(() => {
+                const amountInput = inputEl.closest('.table-row').querySelector('.exp-amount');
+                if (amountInput) amountInput.focus();
+            }, 10);
         });
         list.appendChild(li);
     });
 }
-
 // === Analytics ===
 function renderAnalytics() {
     const dateFromEl = document.getElementById('date-from');
@@ -357,17 +331,14 @@ function renderAnalytics() {
         d.setDate(0);
         dateToEl.value = formatDateStr(d);
     }
-
     const calcAndRender = () => {
         const from = parseLocalDate(dateFromEl.value);
         const to = parseLocalDate(dateToEl.value);
         if (from > to) return;
-
         let totalInc = 0;
         let totalExp = 0;
         const catTotals = {};
         const dailyIncomes = [];
-
         // Loop through all days in range
         let curr = new Date(from);
         while (curr <= to) {
@@ -375,7 +346,6 @@ function renderAnalytics() {
             const inc = parseInt(state.income[dStr]) || 0;
             totalInc += inc;
             dailyIncomes.push({ date: dStr, val: inc });
-
             const exps = state.expenses[dStr] || [];
             exps.forEach(e => {
                 const am = parseInt(e.amount) || 0;
@@ -386,14 +356,11 @@ function renderAnalytics() {
             });
             curr.setDate(curr.getDate() + 1);
         }
-
         // Summary Cards
         document.getElementById('summary-income').textContent = `${formatNumber(totalInc)} ₽`;
         document.getElementById('summary-expense').textContent = `${formatNumber(totalExp)} ₽`;
-
         // Render Chart
         renderChart(dailyIncomes);
-
         // Render Category Report
         const reportContainer = document.getElementById('category-report');
         reportContainer.innerHTML = '';
@@ -407,12 +374,15 @@ function renderAnalytics() {
             
             const el = document.createElement('div');
             el.className = 'cat-item';
+            
+            const percHtml = totalExp > 0 ? ` <span class="muted" style="font-weight:400; font-size:13px; margin-left:4px;">(${Math.round(amount/totalExp*100)}%)</span>` : '';
+            
             el.innerHTML = `
                 <div class="cat-item-info">
                     <div class="cat-color"></div>
                     <div class="cat-name">${name}</div>
                 </div>
-                <div class="cat-amount">${formatNumber(amount)} ₽</div>
+                <div class="cat-amount">${formatNumber(amount)} ₽${percHtml}</div>
             `;
             reportContainer.appendChild(el);
         });
@@ -421,7 +391,6 @@ function renderAnalytics() {
             reportContainer.innerHTML = '<p class="muted">Нет расходов за этот период</p>';
         }
     };
-
     dateFromEl.addEventListener('change', calcAndRender);
     dateToEl.addEventListener('change', calcAndRender);
     
@@ -430,10 +399,8 @@ function renderAnalytics() {
         this.classList.toggle('open');
         document.getElementById('category-report').classList.toggle('hidden');
     };
-
     calcAndRender();
 }
-
 function renderChart(data) {
     const container = document.getElementById('bar-chart');
     container.innerHTML = '';
@@ -441,7 +408,6 @@ function renderChart(data) {
     if (data.length === 0) return;
     
     const maxVal = Math.max(...data.map(d => d.val), 1000); // min max for scale
-
     data.forEach(item => {
         const heightPct = (item.val / maxVal) * 100;
         const dObj = new Date(item.date);
@@ -457,12 +423,10 @@ function renderChart(data) {
         container.appendChild(wrapper);
     });
 }
-
 // === Settings ===
 function renderSettings() {
     const list = document.getElementById('categories-list');
     list.innerHTML = '';
-
     state.categories.forEach((cat, idx) => {
         const li = document.createElement('li');
         li.className = 'settings-item';
@@ -476,7 +440,6 @@ function renderSettings() {
         
         const input = li.querySelector('input');
         const delBtn = li.querySelector('.delete-cat');
-
         input.addEventListener('blur', (e) => {
             const newName = e.target.value.trim();
             if (newName) {
@@ -486,7 +449,6 @@ function renderSettings() {
                 e.target.value = state.categories[idx].name; // revert
             }
         });
-
         delBtn.addEventListener('click', () => {
             if (confirm(`Удалить категорию "${cat.name}"?`)) {
                 state.categories.splice(idx, 1);
@@ -494,10 +456,8 @@ function renderSettings() {
                 renderSettings();
             }
         });
-
         list.appendChild(li);
     });
-
     const addBtn = document.getElementById('add-category-btn');
     // Replace element to clear listeners
     const newAddBtn = addBtn.cloneNode(true);
@@ -511,8 +471,58 @@ function renderSettings() {
         saveState('categories');
         renderSettings();
     });
+    // Backup Export
+    document.getElementById('btn-export-backup').onclick = () => {
+        const dataStr = JSON.stringify(state, null, 2);
+        const blob = new Blob([dataStr], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        
+        const a = document.createElement('a');
+        a.href = url;
+        const d = new Date();
+        const dateString = `${d.getFullYear()}${(d.getMonth()+1).toString().padStart(2,'0')}${d.getDate().toString().padStart(2,'0')}`;
+        a.download = `u_coffee_backup_${dateString}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+    };
+    // Backup Import
+    const importBtn = document.getElementById('btn-import-backup');
+    const importFile = document.getElementById('input-import-backup');
+    
+    importBtn.onclick = () => importFile.click();
+    
+    importFile.onchange = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        if (!confirm('Вы уверены? Загрузка резервной копии ПЕРЕЗАПИШЕТ все текущие данные. Это действие нельзя отменить.')) {
+            importFile.value = ''; // reset
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            try {
+                const importedState = JSON.parse(event.target.result);
+                if (importedState && typeof importedState === 'object') {
+                    if (importedState.categories) state.categories = importedState.categories;
+                    if (importedState.income) state.income = importedState.income;
+                    if (importedState.expenses) state.expenses = importedState.expenses;
+                    
+                    saveState('categories');
+                    saveState('income');
+                    saveState('expenses');
+                    
+                    alert('Данные успешно восстановлены!');
+                    window.location.reload();
+                } else {
+                    alert('Неверный формат файла резервной копии.');
+                }
+            } catch (err) {
+                alert('Ошибка чтения файла. Возможно, он поврежден.');
+            }
+        };
+        reader.readAsText(file);
+    };
 }
-
 // === Init ===
 document.addEventListener('DOMContentLoaded', () => {
     loadState();
