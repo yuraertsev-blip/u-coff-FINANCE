@@ -134,9 +134,17 @@ main#view-container {
     color: var(--accent-expense);
 }
 .calendar-days {
-    display: grid;
-    grid-template-columns: repeat(7, 1fr);
+    display: flex;
+    flex-direction: row;
+    overflow-x: auto;
+    scroll-behavior: smooth;
     gap: 8px;
+    padding-bottom: 8px;
+    -ms-overflow-style: none; /* IE and Edge */
+    scrollbar-width: none; /* Firefox */
+}
+.calendar-days::-webkit-scrollbar {
+    display: none;
 }
 .cal-day {
     display: flex;
@@ -144,6 +152,8 @@ main#view-container {
     align-items: center;
     justify-content: center;
     padding: 10px 0;
+    min-width: 52px;
+    flex-shrink: 0;
     border-radius: 12px;
     cursor: pointer;
     transition: var(--trans);
