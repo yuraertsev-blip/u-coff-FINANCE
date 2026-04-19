@@ -1,5 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
 import { getFirestore, doc, onSnapshot, setDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+
 // === Firebase Init ===
 const firebaseConfig = {
   apiKey: "AIzaSyC0rFOiAx5LEpT-6s9Bc8sxNtc59RfsOcM",
@@ -11,11 +12,12 @@ const firebaseConfig = {
   appId: "1:971000964907:web:5763d4ced46cdd1b6ac76e",
   measurementId: "G-2DZQ429YT2"
 };
+
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 let unsubscribeSnapshot = null;
+
 // === State & LocalStorage ===
-const STORE_PREFIX = 'u_coffee';
 const DEFAULT_CATEGORIES = [
     { id: 'cat_1', name: 'Аренда', items: [] },
     { id: 'cat_2', name: 'Зарплата', items: [] },
@@ -23,23 +25,71 @@ const DEFAULT_CATEGORIES = [
     { id: 'cat_4', name: 'Продукты', items: [] },
     { id: 'cat_5', name: 'Налоги', items: [] },
 ];
+
 let state = {
     currentDate: new Date(),
     categories: [],
-    income: {}, // { 'YYYY-MM-DD': amount }
-    expenses: {} // { 'YYYY-MM-DD': [{ id, name, categoryId, amount }] }
+    income: {}, 
+    expenses: {} 
 };
+
+// === Utils ===
+function formatDateStr(date) {
+    const d = new Date(date);
+    let month = '' + (d.getMonth() + 1);
+    let day = '' + d.getDate();
+    let year = d.getFullYear();
+
+    if (month.length < 2) month = '0' + month;
+    if (day.length < 2) day = '0' + day;
+
+    return [year, month, day].join('-');
+}
+
+function parseLocalDate(dateStr) {
+    if (!dateStr) return new Date();
+    const parts = dateStr.split('-');
+    if (parts.length !== 3) return new Date(dateStr);
+    return new Date(parts[0], parts[1] - 1, parts[2]);
+}
+
+function formatNumber(num) {
+    if (!num) return '';
+    return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+}
+
+function parseNumber(str) {
+    if (!str) return 0;
+    return parseInt(str.replace(/\s/g, ''), 10) || 0;
+}
+
+// === Debounce Logic ===
+function debounce(func, delay) {
+    let timeout;
+    return function(...args) {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => func.apply(this, args), delay);
+    };
+}
+
+const debouncedSave = debounce(() => {
+    saveState();
+}, 800);
+
+
 function loadState() {
     if (unsubscribeSnapshot) unsubscribeSnapshot();
     
-    unsubscribeSnapshot = onSnapshot(doc(db, 'coffee_db', 'main_state'), (docSnap) => {
+    unsubscribeSnapshot = onSnapshot(doc(db, 'coffee_db', 'main_state'), { includeMetadataChanges: true }, (docSnap) => {
         if (docSnap.exists()) {
             const data = docSnap.data();
             state.categories = data.categories || [...DEFAULT_CATEGORIES];
             state.income = data.income || {};
             state.expenses = data.expenses || {};
             
-            // Re-render based on current view
+            // Если данные отправлены нами, мы их уже видим. Не перерисовываем UI, чтобы не сбить фокус.
+            if (docSnap.metadata.hasPendingWrites) return;
+            
             if (document.getElementById('view-data').classList.contains('active')) renderDataEntry();
             if (document.getElementById('view-settings').classList.contains('active')) renderSettings();
             if (document.getElementById('view-analytics').classList.contains('active')) renderAnalytics();
@@ -47,54 +97,38 @@ function loadState() {
             state.categories = [...DEFAULT_CATEGORIES];
             state.income = {};
             state.expenses = {};
-            saveState(); // push defaults to cloud
+            saveState(); 
         }
     }, (error) => {
         console.error("Error syncing data:", error);
     });
 }
-function saveState(key) {
-    setDoc(doc(db, 'coffee_db', 'main_state'), {
-        categories: state.categories,
-        income: state.income,
-        expenses: state.expenses
-    }, { merge: true })
+
+function saveState() {
+    // Делаем глубокую копию, чтобы Firebase не ругался на undefined или классы Date
+    const dataToSave = {
+        categories: JSON.parse(JSON.stringify(state.categories)),
+        income: JSON.parse(JSON.stringify(state.income)),
+        expenses: JSON.parse(JSON.stringify(state.expenses))
+    };
+
+    setDoc(doc(db, 'coffee_db', 'main_state'), dataToSave, { merge: true })
     .catch((error) => console.error("Error saving data:", error));
 }
-// === Utils ===
-function formatDateStr(date) {
-    const d = new Date(date);
-    let month = '' + (d.getMonth() + 1);
-    let day = '' + d.getDate();
-    let year = d.getFullYear();
-    if (month.length < 2) month = '0' + month;
-    if (day.length < 2) day = '0' + day;
-    return [year, month, day].join('-');
-}
-function parseLocalDate(dateStr) {
-    if (!dateStr) return new Date();
-    const parts = dateStr.split('-');
-    if (parts.length !== 3) return new Date(dateStr);
-    return new Date(parts[0], parts[1] - 1, parts[2]);
-}
-function formatNumber(num) {
-    if (!num) return '';
-    return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ");
-}
-function parseNumber(str) {
-    if (!str) return 0;
-    return parseInt(str.replace(/\s/g, ''), 10) || 0;
-}
+
+
 // === Navigation ===
 function initNavigation() {
     const navItems = document.querySelectorAll('.nav-item');
     const views = document.querySelectorAll('.view');
+
     navItems.forEach(item => {
         item.addEventListener('click', () => {
             const targetId = item.getAttribute('data-target');
             
             navItems.forEach(n => n.classList.remove('active'));
             item.classList.add('active');
+
             views.forEach(v => {
                 if (v.id === targetId) {
                     v.classList.add('active');
@@ -102,17 +136,14 @@ function initNavigation() {
                     v.classList.remove('active');
                 }
             });
-            // Refresh specific views on enter
-            if (targetId === 'view-data') {
-                renderDataEntry();
-            } else if (targetId === 'view-analytics') {
-                renderAnalytics();
-            } else if (targetId === 'view-settings') {
-                renderSettings();
-            }
+
+            if (targetId === 'view-data') renderDataEntry();
+            else if (targetId === 'view-analytics') renderAnalytics();
+            else if (targetId === 'view-settings') renderSettings();
         });
     });
 }
+
 // === Calendar ===
 function initCalendar() {
     const btnPrev = document.getElementById('cal-prev');
@@ -121,25 +152,31 @@ function initCalendar() {
     btnPrev.addEventListener('click', () => {
         state.currentDate.setMonth(state.currentDate.getMonth() - 1);
         renderCalendar();
+        renderDataEntry();
     });
     
     btnNext.addEventListener('click', () => {
         state.currentDate.setMonth(state.currentDate.getMonth() + 1);
         renderCalendar();
+        renderDataEntry();
     });
+
     renderCalendar();
 }
+
 function renderCalendar() {
     const monthYearStr = state.currentDate.toLocaleString('ru-RU', { month: 'long', year: 'numeric' });
     document.getElementById('cal-month-year').textContent = monthYearStr.charAt(0).toUpperCase() + monthYearStr.slice(1);
+
     const grid = document.getElementById('cal-days-grid');
     grid.innerHTML = '';
-    // Generate a simple week view for prototype (centered around selected date)
-    // For a full app, we would make a swipable calendar. Here we show 7 days.
+
     const startOfWeek = new Date(state.currentDate);
-    const dayOfWeek = startOfWeek.getDay() === 0 ? 6 : startOfWeek.getDay() - 1; // Mon=0
+    const dayOfWeek = startOfWeek.getDay() === 0 ? 6 : startOfWeek.getDay() - 1; 
     startOfWeek.setDate(startOfWeek.getDate() - dayOfWeek);
+
     const weekdays = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+
     for (let i = 0; i < 7; i++) {
         const d = new Date(startOfWeek);
         d.setDate(d.getDate() + i);
@@ -151,10 +188,10 @@ function renderCalendar() {
             el.classList.add('active');
         }
         
-        // Has data marker
         if (state.income[dateStr] > 0 || (state.expenses[dateStr] && state.expenses[dateStr].some(e => e.amount > 0))) {
             el.classList.add('has-data');
         }
+
         el.innerHTML = `
             <span class="weekday">${weekdays[i]}</span>
             <span class="day-num">${d.getDate()}</span>
@@ -169,12 +206,12 @@ function renderCalendar() {
         grid.appendChild(el);
     }
 }
+
 // === Data Entry ===
 function setupInputFormatting(inputEl, callback) {
     inputEl.addEventListener('input', (e) => {
-        let val = e.target.value.replace(/[^\d]/g, ''); // Remove non-digits
+        let val = e.target.value.replace(/[^\d]/g, ''); 
         
-        // Format with spaces
         if (val !== '') {
             e.target.value = formatNumber(val);
         } else {
@@ -184,6 +221,7 @@ function setupInputFormatting(inputEl, callback) {
         if (callback) callback(parseNumber(e.target.value));
     });
 }
+
 function renderDataEntry() {
     const dateStr = formatDateStr(state.currentDate);
     
@@ -192,7 +230,6 @@ function renderDataEntry() {
     const incomeVal = state.income[dateStr] || '';
     incomeInput.value = formatNumber(incomeVal);
     
-    // Clone to remove previous event listeners
     const newIncomeInput = incomeInput.cloneNode(true);
     incomeInput.parentNode.replaceChild(newIncomeInput, incomeInput);
     
@@ -200,9 +237,10 @@ function renderDataEntry() {
     
     setupInputFormatting(newIncomeInput, (val) => {
         state.income[dateStr] = val;
-        saveState('income');
-        renderCalendar(); // Update dots
+        renderCalendar(); 
+        debouncedSave(); // <-- Отложенное сохранение для выручки
     });
+
     // Expenses
     const rowsContainer = document.getElementById('expenses-rows');
     rowsContainer.innerHTML = '';
@@ -217,6 +255,7 @@ function renderDataEntry() {
         state.categories.forEach(cat => {
             catOptions += `<option value="${cat.id}" ${cat.id === exp.categoryId ? 'selected' : ''}>${cat.name}</option>`;
         });
+
         let nameOptions = `<option value="">Выбрать...</option>`;
         if (exp.categoryId) {
             const cat = state.categories.find(c => c.id === exp.categoryId);
@@ -227,6 +266,7 @@ function renderDataEntry() {
             }
             nameOptions += `<option value="__add__" style="font-weight: 600; color: var(--accent-income);">+ Добавить наименование</option>`;
         }
+
         row.innerHTML = `
             <div class="row-num">${idx + 1}</div>
             <div>
@@ -250,54 +290,72 @@ function renderDataEntry() {
         `;
         
         rowsContainer.appendChild(row);
+
         const nameSelect = row.querySelector('.exp-name');
         const catSelect = row.querySelector('.exp-cat');
         const amountInput = row.querySelector('.exp-amount');
         amountInput.addEventListener('focus', function() { this.select(); });
+
         catSelect.addEventListener('change', (e) => {
-            updateExpense(dateStr, idx, 'categoryId', e.target.value);
-            updateExpense(dateStr, idx, 'name', ''); // Reset name on cat switch
+            updateExpense(dateStr, idx, 'categoryId', e.target.value, true);
+            updateExpense(dateStr, idx, 'name', '', true); 
             renderDataEntry(); 
         });
+
         nameSelect.addEventListener('change', (e) => {
             if (e.target.value === '__add__') {
-                e.target.value = exp.name || ''; // revert temp selection
+                e.target.value = exp.name || ''; 
                 openModal(exp.categoryId, idx, dateStr);
             } else {
-                updateExpense(dateStr, idx, 'name', e.target.value);
+                updateExpense(dateStr, idx, 'name', e.target.value, true);
             }
         });
+
         setupInputFormatting(amountInput, (val) => {
-            updateExpense(dateStr, idx, 'amount', val);
+            updateExpense(dateStr, idx, 'amount', val, false); // false = использовать debounce
         });
+
         const clearBtn = row.querySelector('.btn-clear-row');
         clearBtn.addEventListener('click', () => {
             state.expenses[dateStr][idx] = { name: '', categoryId: '', amount: 0 };
-            saveState('expenses');
+            saveState(); // Мгновенное удаление
             renderDataEntry();
+            updateExpenseTotal(dateStr);
+            renderCalendar();
         });
     });
+
     updateExpenseTotal(dateStr);
 }
-function updateExpense(dateStr, index, field, value) {
+
+// field: что обновляем, value: новое значение, immediate: true (сохранить сразу) или false (с задержкой)
+function updateExpense(dateStr, index, field, value, immediate = false) {
     if (!state.expenses[dateStr]) {
         state.expenses[dateStr] = Array(15).fill().map(() => ({ name: '', categoryId: '', amount: 0 }));
     }
     state.expenses[dateStr][index][field] = value;
-    saveState('expenses');
+    
+    if (immediate) {
+        saveState();
+    } else {
+        debouncedSave(); // Отложенное сохранение для ввода цифр
+    }
     
     if (field === 'amount') {
         updateExpenseTotal(dateStr);
-        renderCalendar(); // Update dots
+        renderCalendar(); 
     }
 }
+
 function updateExpenseTotal(dateStr) {
     const exps = state.expenses[dateStr] || [];
     const total = exps.reduce((acc, curr) => acc + (parseInt(curr.amount) || 0), 0);
     document.getElementById('expense-total').textContent = `${formatNumber(total)} ₽`;
 }
+
 // === Modal (Names) ===
 let currentModalContext = { categoryId: null, rowIndex: null, dateStr: null };
+
 function openModal(categoryId, rowIndex = null, dateStr = null) {
     currentModalContext = { categoryId, rowIndex, dateStr };
     const modal = document.getElementById('add-name-modal');
@@ -306,13 +364,17 @@ function openModal(categoryId, rowIndex = null, dateStr = null) {
     modal.classList.remove('hidden');
     setTimeout(() => input.focus(), 100);
 }
+
 function initModal() {
     const modal = document.getElementById('add-name-modal');
     const cancelBtn = document.getElementById('modal-cancel-btn');
     const saveBtn = document.getElementById('modal-save-btn');
     const input = document.getElementById('new-item-name');
+
     const closeModal = () => modal.classList.add('hidden');
+
     cancelBtn.onclick = closeModal;
+
     saveBtn.onclick = () => {
         const val = input.value.trim();
         if (!val || !currentModalContext.categoryId) {
@@ -328,11 +390,11 @@ function initModal() {
             const exists = cat.items.find(i => i.toLowerCase() === valUpper.toLowerCase());
             if (!exists) {
                 cat.items.push(valUpper);
-                saveState('categories');
+                saveState();
             }
             
             if (currentModalContext.rowIndex !== null && currentModalContext.dateStr) {
-                updateExpense(currentModalContext.dateStr, currentModalContext.rowIndex, 'name', valUpper);
+                updateExpense(currentModalContext.dateStr, currentModalContext.rowIndex, 'name', valUpper, true);
                 renderDataEntry();
             } else {
                 renderSettings();
@@ -341,12 +403,12 @@ function initModal() {
         closeModal();
     };
 }
+
 // === Analytics ===
 function renderAnalytics() {
     const dateFromEl = document.getElementById('date-from');
     const dateToEl = document.getElementById('date-to');
     
-    // Set default range to current month if empty
     if (!dateFromEl.value) {
         const d = new Date(state.currentDate);
         d.setDate(1);
@@ -358,22 +420,25 @@ function renderAnalytics() {
         d.setDate(0);
         dateToEl.value = formatDateStr(d);
     }
+
     const calcAndRender = () => {
         const from = parseLocalDate(dateFromEl.value);
         const to = parseLocalDate(dateToEl.value);
         if (from > to) return;
+
         let totalInc = 0;
         let totalExp = 0;
         const catTotals = {};
         const catDetails = {};
         const dailyIncomes = [];
-        // Loop through all days in range
+
         let curr = new Date(from);
         while (curr <= to) {
             const dStr = formatDateStr(curr);
             const inc = parseInt(state.income[dStr]) || 0;
             totalInc += inc;
             dailyIncomes.push({ date: dStr, val: inc });
+
             const exps = state.expenses[dStr] || [];
             exps.forEach(e => {
                 const am = parseInt(e.amount) || 0;
@@ -392,16 +457,15 @@ function renderAnalytics() {
             });
             curr.setDate(curr.getDate() + 1);
         }
-        // Summary Cards
+
         document.getElementById('summary-income').textContent = `${formatNumber(totalInc)} ₽`;
         document.getElementById('summary-expense').textContent = `${formatNumber(totalExp)} ₽`;
-        // Render Chart
+
         renderChart(dailyIncomes);
-        // Render Category Report
+
         const reportContainer = document.getElementById('category-report');
         reportContainer.innerHTML = '';
         
-        // Sort categories by amount desc
         const sortedCats = Object.entries(catTotals).sort((a,b) => b[1] - a[1]);
         
         sortedCats.forEach(([catId, amount]) => {
@@ -419,6 +483,7 @@ function renderAnalytics() {
                 `).join('');
                 detailsHtml = `<div class="cat-details-list">${detailItemsHtml}</div>`;
             }
+
             const percHtml = totalExp > 0 ? ` <span class="muted" style="font-weight:400; font-size:13px; margin-left:4px;">(${Math.round(amount/totalExp*100)}%)</span>` : '';
             const chevronHtml = detailsHtml ? `<svg class="cat-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>` : '';
             
@@ -453,25 +518,30 @@ function renderAnalytics() {
             reportContainer.innerHTML = '<p class="muted">Нет расходов за этот период</p>';
         }
     };
+
     dateFromEl.addEventListener('change', calcAndRender);
     dateToEl.addEventListener('change', calcAndRender);
     
-    // Toggle Report
     document.getElementById('toggle-report-btn').onclick = function() {
         this.classList.toggle('open');
         document.getElementById('category-report').classList.toggle('hidden');
     };
+
     document.getElementById('btn-export-excel').onclick = exportToExcel;
+
     calcAndRender();
 }
+
 async function exportToExcel() {
     if (typeof ExcelJS === 'undefined') {
         alert('Библиотека ExcelJS не загружена');
         return;
     }
+
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'Ю кофе';
     workbook.created = new Date();
+
     const monthsSet = new Set();
     Object.keys(state.income).forEach(d => monthsSet.add(d.substring(0, 7)));
     Object.keys(state.expenses).forEach(d => {
@@ -479,13 +549,16 @@ async function exportToExcel() {
             monthsSet.add(d.substring(0, 7));
         }
     });
+
     const monthsArr = Array.from(monthsSet).sort();
     
     if (monthsArr.length === 0) {
         alert('Нет данных для выгрузки');
         return;
     }
+
     const monthNames = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+
     monthsArr.forEach(monthStr => {
         const [year, month] = monthStr.split('-');
         const sheetName = `${monthNames[parseInt(month) - 1]} ${year}`;
@@ -493,18 +566,19 @@ async function exportToExcel() {
         
         ws.properties.outlineProperties = { summaryBelow: false };
         
-        // Define Columns widths
-        ws.getColumn('A').width = 15; // Дата доходы
-        ws.getColumn('B').width = 20; // Сумма доходы
-        ws.getColumn('C').width = 5;  // Spacer
-        ws.getColumn('D').width = 25; // Категория
-        ws.getColumn('E').width = 28; // Наименование
-        ws.getColumn('F').width = 20; // Сумма расходы
+        ws.getColumn('A').width = 15; 
+        ws.getColumn('B').width = 20; 
+        ws.getColumn('C').width = 5;  
+        ws.getColumn('D').width = 25; 
+        ws.getColumn('E').width = 28; 
+        ws.getColumn('F').width = 20; 
+
         let totalInc = 0;
         let totalExp = 0;
         
         const monthIncomes = [];
         const monthExpensesByCategory = {};
+
         const daysInMonth = new Date(year, month, 0).getDate();
         for (let i = 1; i <= daysInMonth; i++) {
             const dStr = `${year}-${month}-${i.toString().padStart(2, '0')}`;
@@ -514,6 +588,7 @@ async function exportToExcel() {
                 totalInc += inc;
                 monthIncomes.push({ date: dStr, val: inc });
             }
+
             const exps = state.expenses[dStr] || [];
             exps.forEach(e => {
                 const am = parseInt(e.amount) || 0;
@@ -536,7 +611,7 @@ async function exportToExcel() {
                 }
             });
         }
-        // Headers row 1
+
         ws.mergeCells('A1:B1');
         ws.getCell('A1').value = `ИТОГО ДОХОДЫ: ${totalInc} ₽`;
         ws.getCell('A1').font = { bold: true, color: { argb: 'FF059669' }, size: 14 };
@@ -546,17 +621,18 @@ async function exportToExcel() {
         ws.getCell('D1').value = `ИТОГО РАСХОДЫ: ${totalExp} ₽`;
         ws.getCell('D1').font = { bold: true, color: { argb: 'FFE11D48' }, size: 14 };
         ws.getCell('D1').alignment = { vertical: 'middle', horizontal: 'center' };
-        // Headers row 2
+
         ws.getCell('A2').value = 'Дата';
         ws.getCell('B2').value = 'Сумма выручки';
         ws.getCell('D2').value = 'Категория';
         ws.getCell('E2').value = 'Наименование';
         ws.getCell('F2').value = 'Сумма';
+
         ['A2', 'B2', 'D2', 'E2', 'F2'].forEach(c => {
             ws.getCell(c).font = { bold: true };
             ws.getCell(c).border = { bottom: { style: 'medium' } };
         });
-        // Fill Income (Left)
+
         let incRow = 3;
         monthIncomes.forEach(inc => {
             ws.getCell(`A${incRow}`).value = inc.date;
@@ -564,7 +640,7 @@ async function exportToExcel() {
             ws.getCell(`B${incRow}`).numFmt = '#,##0 \\₽';
             incRow++;
         });
-        // Fill Expenses (Right)
+
         let expRow = 3;
         const sortedCats = Object.entries(monthExpensesByCategory).sort((a,b) => b[1].total - a[1].total);
         
@@ -593,10 +669,12 @@ async function exportToExcel() {
                 ws.getCell(`E${expRow}`).font = { color: { argb: 'FF64748B' } }; 
                 
                 ws.getRow(expRow).outlineLevel = 1;
+                ws.getRow(expRow).collapsed = true; // Сворачиваем по умолчанию в Excel
                 expRow++;
             });
         });
     });
+
     const buffer = await workbook.xlsx.writeBuffer();
     const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     const url = URL.createObjectURL(blob);
@@ -608,13 +686,15 @@ async function exportToExcel() {
     a.click();
     URL.revokeObjectURL(url);
 }
+
 function renderChart(data) {
     const container = document.getElementById('bar-chart');
     container.innerHTML = '';
     
     if (data.length === 0) return;
     
-    const maxVal = Math.max(...data.map(d => d.val), 1000); // min max for scale
+    const maxVal = Math.max(...data.map(d => d.val), 1000); 
+
     data.forEach(item => {
         const heightPct = (item.val / maxVal) * 100;
         const dObj = new Date(item.date);
@@ -630,10 +710,12 @@ function renderChart(data) {
         container.appendChild(wrapper);
     });
 }
+
 // === Settings ===
 function renderSettings() {
     const list = document.getElementById('categories-list');
     list.innerHTML = '';
+
     state.categories.forEach((cat, idx) => {
         const li = document.createElement('li');
         li.className = 'settings-item';
@@ -657,6 +739,7 @@ function renderSettings() {
                 Добавить наименование
             </button>
         </div>`;
+
         li.innerHTML = `
             <div style="display:flex; flex-direction:column; width:100%;">
                 <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:8px;">
@@ -671,52 +754,58 @@ function renderSettings() {
         
         const input = li.querySelector('input');
         const delBtn = li.querySelector('.delete-cat');
+
         input.addEventListener('blur', (e) => {
             const newName = e.target.value.trim();
             if (newName) {
                 state.categories[idx].name = newName;
-                saveState('categories');
+                saveState();
             } else {
-                e.target.value = state.categories[idx].name; // revert
+                e.target.value = state.categories[idx].name; 
             }
         });
+
         delBtn.addEventListener('click', () => {
             if (confirm(`Удалить категорию "${cat.name}" и все её наименования?`)) {
                 state.categories.splice(idx, 1);
-                saveState('categories');
+                saveState();
                 renderSettings();
             }
         });
+
         const deleteSubItemBtns = li.querySelectorAll('.delete-subitem');
         deleteSubItemBtns.forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const iIdx = parseInt(btn.getAttribute('data-item'));
                 state.categories[idx].items.splice(iIdx, 1);
-                saveState('categories');
+                saveState();
                 renderSettings();
             });
         });
+
         const btnAdd = li.querySelector('.btn-add-item');
         btnAdd.addEventListener('click', () => {
             openModal(cat.id);
         });
+
         list.appendChild(li);
     });
+
     const addBtn = document.getElementById('add-category-btn');
-    // Replace element to clear listeners
     const newAddBtn = addBtn.cloneNode(true);
     addBtn.parentNode.replaceChild(newAddBtn, addBtn);
     
     newAddBtn.addEventListener('click', () => {
         state.categories.push({
             id: 'cat_' + Date.now(),
-            name: 'Новая категория'
+            name: 'Новая категория',
+            items: []
         });
-        saveState('categories');
+        saveState();
         renderSettings();
     });
-    // Backup Export
+
     document.getElementById('btn-export-backup').onclick = () => {
         const dataStr = JSON.stringify(state, null, 2);
         const blob = new Blob([dataStr], { type: "application/json" });
@@ -730,7 +819,7 @@ function renderSettings() {
         a.click();
         URL.revokeObjectURL(url);
     };
-    // Backup Import
+
     const importBtn = document.getElementById('btn-import-backup');
     const importFile = document.getElementById('input-import-backup');
     
@@ -739,10 +828,12 @@ function renderSettings() {
     importFile.onchange = (e) => {
         const file = e.target.files[0];
         if (!file) return;
+
         if (!confirm('Вы уверены? Загрузка резервной копии ПЕРЕЗАПИШЕТ все текущие данные. Это действие нельзя отменить.')) {
-            importFile.value = ''; // reset
+            importFile.value = ''; 
             return;
         }
+
         const reader = new FileReader();
         reader.onload = (event) => {
             try {
@@ -752,9 +843,7 @@ function renderSettings() {
                     if (importedState.income) state.income = importedState.income;
                     if (importedState.expenses) state.expenses = importedState.expenses;
                     
-                    saveState('categories');
-                    saveState('income');
-                    saveState('expenses');
+                    saveState();
                     
                     alert('Данные успешно восстановлены!');
                     window.location.reload();
@@ -768,6 +857,7 @@ function renderSettings() {
         reader.readAsText(file);
     };
 }
+
 // === Init ===
 document.addEventListener('DOMContentLoaded', () => {
     loadState();
