@@ -450,7 +450,152 @@ function renderAnalytics() {
         this.classList.toggle('open');
         document.getElementById('category-report').classList.toggle('hidden');
     };
+    document.getElementById('btn-export-excel').onclick = exportToExcel;
     calcAndRender();
+}
+async function exportToExcel() {
+    if (typeof ExcelJS === 'undefined') {
+        alert('Библиотека ExcelJS не загружена');
+        return;
+    }
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'Ю кофе';
+    workbook.created = new Date();
+    const monthsSet = new Set();
+    Object.keys(state.income).forEach(d => monthsSet.add(d.substring(0, 7)));
+    Object.keys(state.expenses).forEach(d => {
+        if (state.expenses[d].some(e => e.amount > 0)) {
+            monthsSet.add(d.substring(0, 7));
+        }
+    });
+    const monthsArr = Array.from(monthsSet).sort();
+    
+    if (monthsArr.length === 0) {
+        alert('Нет данных для выгрузки');
+        return;
+    }
+    const monthNames = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+    monthsArr.forEach(monthStr => {
+        const [year, month] = monthStr.split('-');
+        const sheetName = `${monthNames[parseInt(month) - 1]} ${year}`;
+        const ws = workbook.addWorksheet(sheetName);
+        
+        ws.properties.outlineProperties = { summaryBelow: false };
+        
+        // Define Columns widths
+        ws.getColumn('A').width = 15; // Дата доходы
+        ws.getColumn('B').width = 20; // Сумма доходы
+        ws.getColumn('C').width = 5;  // Spacer
+        ws.getColumn('D').width = 25; // Категория
+        ws.getColumn('E').width = 28; // Наименование
+        ws.getColumn('F').width = 20; // Сумма расходы
+        let totalInc = 0;
+        let totalExp = 0;
+        
+        const monthIncomes = [];
+        const monthExpensesByCategory = {};
+        const daysInMonth = new Date(year, month, 0).getDate();
+        for (let i = 1; i <= daysInMonth; i++) {
+            const dStr = `${year}-${month}-${i.toString().padStart(2, '0')}`;
+            
+            const inc = parseInt(state.income[dStr]) || 0;
+            if (inc > 0) {
+                totalInc += inc;
+                monthIncomes.push({ date: dStr, val: inc });
+            }
+            const exps = state.expenses[dStr] || [];
+            exps.forEach(e => {
+                const am = parseInt(e.amount) || 0;
+                if (am > 0 && e.categoryId) {
+                    totalExp += am;
+                    if (!monthExpensesByCategory[e.categoryId]) {
+                        monthExpensesByCategory[e.categoryId] = { total: 0, items: [] };
+                    }
+                    monthExpensesByCategory[e.categoryId].total += am;
+                    
+                    const name = (e.name || 'Без названия').trim();
+                    const nameCap = name.charAt(0).toUpperCase() + name.slice(1);
+                    
+                    const existing = monthExpensesByCategory[e.categoryId].items.find(item => item.name.toLowerCase() === nameCap.toLowerCase());
+                    if (existing) {
+                        existing.amount += am;
+                    } else {
+                        monthExpensesByCategory[e.categoryId].items.push({ name: nameCap, amount: am });
+                    }
+                }
+            });
+        }
+        // Headers row 1
+        ws.mergeCells('A1:B1');
+        ws.getCell('A1').value = `ИТОГО ДОХОДЫ: ${totalInc} ₽`;
+        ws.getCell('A1').font = { bold: true, color: { argb: 'FF059669' }, size: 14 };
+        ws.getCell('A1').alignment = { vertical: 'middle', horizontal: 'center' };
+        
+        ws.mergeCells('D1:F1');
+        ws.getCell('D1').value = `ИТОГО РАСХОДЫ: ${totalExp} ₽`;
+        ws.getCell('D1').font = { bold: true, color: { argb: 'FFE11D48' }, size: 14 };
+        ws.getCell('D1').alignment = { vertical: 'middle', horizontal: 'center' };
+        // Headers row 2
+        ws.getCell('A2').value = 'Дата';
+        ws.getCell('B2').value = 'Сумма выручки';
+        ws.getCell('D2').value = 'Категория';
+        ws.getCell('E2').value = 'Наименование';
+        ws.getCell('F2').value = 'Сумма';
+        ['A2', 'B2', 'D2', 'E2', 'F2'].forEach(c => {
+            ws.getCell(c).font = { bold: true };
+            ws.getCell(c).border = { bottom: { style: 'medium' } };
+        });
+        // Fill Income (Left)
+        let incRow = 3;
+        monthIncomes.forEach(inc => {
+            ws.getCell(`A${incRow}`).value = inc.date;
+            ws.getCell(`B${incRow}`).value = inc.val;
+            ws.getCell(`B${incRow}`).numFmt = '#,##0 \\₽';
+            incRow++;
+        });
+        // Fill Expenses (Right)
+        let expRow = 3;
+        const sortedCats = Object.entries(monthExpensesByCategory).sort((a,b) => b[1].total - a[1].total);
+        
+        sortedCats.forEach(([catId, data]) => {
+            const cat = state.categories.find(c => c.id === catId);
+            const catName = cat ? cat.name : 'Удаленная категория';
+            
+            ws.getCell(`D${expRow}`).value = catName;
+            ws.getCell(`F${expRow}`).value = data.total;
+            
+            ws.getCell(`D${expRow}`).font = { bold: true };
+            ws.getCell(`F${expRow}`).font = { bold: true };
+            ws.getCell(`F${expRow}`).numFmt = '#,##0 \\₽';
+            ws.getCell(`D${expRow}`).border = { top: { style: 'thin', color: { argb: 'FFE2E8F0' } } };
+            ws.getCell(`E${expRow}`).border = { top: { style: 'thin', color: { argb: 'FFE2E8F0' } } };
+            ws.getCell(`F${expRow}`).border = { top: { style: 'thin', color: { argb: 'FFE2E8F0' } } };
+            
+            ws.getRow(expRow).outlineLevel = 0;
+            const parentRow = expRow;
+            expRow++;
+            
+            data.items.sort((a,b) => b.amount - a.amount).forEach(item => {
+                ws.getCell(`E${expRow}`).value = item.name;
+                ws.getCell(`F${expRow}`).value = item.amount;
+                ws.getCell(`F${expRow}`).numFmt = '#,##0 \\₽';
+                ws.getCell(`E${expRow}`).font = { color: { argb: 'FF64748B' } }; 
+                
+                ws.getRow(expRow).outlineLevel = 1;
+                expRow++;
+            });
+        });
+    });
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const now = new Date();
+    const dateString = `${now.getFullYear()}${(now.getMonth()+1).toString().padStart(2,'0')}${now.getDate().toString().padStart(2,'0')}`;
+    a.download = `u_coffee_report_${dateString}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
 }
 function renderChart(data) {
     const container = document.getElementById('bar-chart');
