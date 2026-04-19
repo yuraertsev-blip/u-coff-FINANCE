@@ -1,11 +1,11 @@
 // === State & LocalStorage ===
 const STORE_PREFIX = 'u_coffee';
 const DEFAULT_CATEGORIES = [
-    { id: 'cat_1', name: 'Аренда' },
-    { id: 'cat_2', name: 'Зарплата' },
-    { id: 'cat_3', name: 'Хоз. товары' },
-    { id: 'cat_4', name: 'Продукты' },
-    { id: 'cat_5', name: 'Налоги' },
+    { id: 'cat_1', name: 'Аренда', items: [] },
+    { id: 'cat_2', name: 'Зарплата', items: [] },
+    { id: 'cat_3', name: 'Хоз. товары', items: [] },
+    { id: 'cat_4', name: 'Продукты', items: [] },
+    { id: 'cat_5', name: 'Налоги', items: [] },
 ];
 let state = {
     currentDate: new Date(),
@@ -21,18 +21,32 @@ function loadState() {
     const exp = localStorage.getItem(`${STORE_PREFIX}_expenses`);
     state.expenses = exp ? JSON.parse(exp) : {};
     
+    // Migration: ensure items exist, populate from history
+    let migratedCats = false;
+    state.categories.forEach(cat => {
+        if (!cat.items) {
+            cat.items = [];
+            migratedCats = true;
+        }
+    });
+    if (migratedCats) {
+        Object.values(state.expenses).forEach(dayArr => {
+            dayArr.forEach(exp => {
+                if (exp.categoryId && exp.name) {
+                    const cat = state.categories.find(c => c.id === exp.categoryId);
+                    if (cat) {
+                        const nUpper = exp.name.trim().charAt(0).toUpperCase() + exp.name.trim().slice(1);
+                        if (nUpper && !cat.items.find(i => i.toLowerCase() === nUpper.toLowerCase())) {
+                            cat.items.push(nUpper);
+                        }
+                    }
+                }
+            });
+        });
+        saveState('categories');
+    }
     // Auto-save initial defaults if empty
     if (!cats) saveState('categories');
-    buildAutocompleteCache();
-}
-let autocompleteCache = new Set();
-function buildAutocompleteCache() {
-    autocompleteCache.clear();
-    Object.values(state.expenses).forEach(dayArr => {
-        dayArr.forEach(exp => {
-            if (exp.name) autocompleteCache.add(exp.name.trim());
-        });
-    });
 }
 function saveState(key) {
     if (key === 'categories') localStorage.setItem(`${STORE_PREFIX}_categories`, JSON.stringify(state.categories));
@@ -193,14 +207,26 @@ function renderDataEntry() {
         state.categories.forEach(cat => {
             catOptions += `<option value="${cat.id}" ${cat.id === exp.categoryId ? 'selected' : ''}>${cat.name}</option>`;
         });
+        let nameOptions = `<option value="">Выбрать...</option>`;
+        if (exp.categoryId) {
+            const cat = state.categories.find(c => c.id === exp.categoryId);
+            if (cat && cat.items) {
+                cat.items.forEach(item => {
+                    nameOptions += `<option value="${item}" ${item.toLowerCase() === (exp.name || '').toLowerCase() ? 'selected' : ''}>${item}</option>`;
+                });
+            }
+            nameOptions += `<option value="__add__" style="font-weight: 600; color: var(--accent-income);">+ Добавить наименование</option>`;
+        }
         row.innerHTML = `
             <div class="row-num">${idx + 1}</div>
             <div>
-                <input type="text" class="table-input exp-name" value="${exp.name || ''}" placeholder="Название...">
-            </div>
-            <div>
                 <select class="table-select exp-cat">
                     ${catOptions}
+                </select>
+            </div>
+            <div>
+                <select class="table-select exp-name" ${!exp.categoryId ? 'disabled' : ''}>
+                    ${nameOptions}
                 </select>
             </div>
             <div class="amount-wrapper">
@@ -214,34 +240,30 @@ function renderDataEntry() {
         `;
         
         rowsContainer.appendChild(row);
-        const nameInput = row.querySelector('.exp-name');
+        const nameSelect = row.querySelector('.exp-name');
         const catSelect = row.querySelector('.exp-cat');
         const amountInput = row.querySelector('.exp-amount');
-        
-        // Autocomplete logic for name
-        nameInput.addEventListener('input', (e) => {
-            updateExpense(dateStr, idx, 'name', e.target.value);
-            handleAutocomplete(e.target, idx, dateStr);
-        });
-        nameInput.addEventListener('blur', (e) => {
-            setTimeout(() => { document.getElementById('autocomplete-popup').classList.add('hidden'); }, 200);
-            const val = e.target.value.trim();
-            updateExpense(dateStr, idx, 'name', val);
-            if (val) autocompleteCache.add(val);
-        });
         catSelect.addEventListener('change', (e) => {
             updateExpense(dateStr, idx, 'categoryId', e.target.value);
+            updateExpense(dateStr, idx, 'name', ''); // Reset name on cat switch
+            renderDataEntry(); 
+        });
+        nameSelect.addEventListener('change', (e) => {
+            if (e.target.value === '__add__') {
+                e.target.value = exp.name || ''; // revert temp selection
+                openModal(exp.categoryId, idx, dateStr);
+            } else {
+                updateExpense(dateStr, idx, 'name', e.target.value);
+            }
         });
         setupInputFormatting(amountInput, (val) => {
             updateExpense(dateStr, idx, 'amount', val);
         });
-        // Clear row logic
         const clearBtn = row.querySelector('.btn-clear-row');
         clearBtn.addEventListener('click', () => {
             state.expenses[dateStr][idx] = { name: '', categoryId: '', amount: 0 };
             saveState('expenses');
             renderDataEntry();
-            document.getElementById('autocomplete-popup').classList.add('hidden');
         });
     });
     updateExpenseTotal(dateStr);
@@ -263,56 +285,50 @@ function updateExpenseTotal(dateStr) {
     const total = exps.reduce((acc, curr) => acc + (parseInt(curr.amount) || 0), 0);
     document.getElementById('expense-total').textContent = `${formatNumber(total)} ₽`;
 }
-// === Autocomplete ===
-function handleAutocomplete(inputEl, index, dateStr) {
-    const val = inputEl.value.toLowerCase();
-    const popup = document.getElementById('autocomplete-popup');
-    const list = document.getElementById('autocomplete-list');
-    list.innerHTML = '';
-    
-    if (!val) {
-        popup.classList.add('hidden');
-        return;
-    }
-    const allNames = new Set();
-    Array.from(autocompleteCache).forEach(name => {
-        if (name.toLowerCase().includes(val) && name !== inputEl.value) {
-            allNames.add(name);
+// === Modal (Names) ===
+let currentModalContext = { categoryId: null, rowIndex: null, dateStr: null };
+function openModal(categoryId, rowIndex = null, dateStr = null) {
+    currentModalContext = { categoryId, rowIndex, dateStr };
+    const modal = document.getElementById('add-name-modal');
+    const input = document.getElementById('new-item-name');
+    input.value = '';
+    modal.classList.remove('hidden');
+    setTimeout(() => input.focus(), 100);
+}
+function initModal() {
+    const modal = document.getElementById('add-name-modal');
+    const cancelBtn = document.getElementById('modal-cancel-btn');
+    const saveBtn = document.getElementById('modal-save-btn');
+    const input = document.getElementById('new-item-name');
+    const closeModal = () => modal.classList.add('hidden');
+    cancelBtn.onclick = closeModal;
+    saveBtn.onclick = () => {
+        const val = input.value.trim();
+        if (!val || !currentModalContext.categoryId) {
+            closeModal();
+            return;
         }
-    });
-    if (allNames.size === 0) {
-        popup.classList.add('hidden');
-        return;
-    }
-    // Position popup
-    const rect = inputEl.getBoundingClientRect();
-    popup.style.top = `${rect.bottom + window.scrollY + 4}px`;
-    popup.style.left = `${rect.left + window.scrollX}px`;
-    popup.style.width = `${rect.width}px`;
-    popup.classList.remove('hidden');
-    Array.from(allNames).slice(0, 5).forEach(name => {
-        const li = document.createElement('li');
-        li.textContent = name;
-        li.addEventListener('click', () => {
-            inputEl.value = name;
-            updateExpense(dateStr, index, 'name', name);
-            popup.classList.add('hidden');
+        
+        const cat = state.categories.find(c => c.id === currentModalContext.categoryId);
+        if (cat) {
+            const valUpper = val.charAt(0).toUpperCase() + val.slice(1);
+            if (!cat.items) cat.items = [];
             
-            // Auto-fill category if possible
-            const match = Object.values(state.expenses).flat().find(e => e.name === name && e.categoryId);
-            if (match) {
-                const select = inputEl.closest('.table-row').querySelector('.exp-cat');
-                select.value = match.categoryId;
-                updateExpense(dateStr, index, 'categoryId', match.categoryId);
+            const exists = cat.items.find(i => i.toLowerCase() === valUpper.toLowerCase());
+            if (!exists) {
+                cat.items.push(valUpper);
+                saveState('categories');
             }
-            // Move focus to Amount input
-            setTimeout(() => {
-                const amountInput = inputEl.closest('.table-row').querySelector('.exp-amount');
-                if (amountInput) amountInput.focus();
-            }, 10);
-        });
-        list.appendChild(li);
-    });
+            
+            if (currentModalContext.rowIndex !== null && currentModalContext.dateStr) {
+                updateExpense(currentModalContext.dateStr, currentModalContext.rowIndex, 'name', valUpper);
+                renderDataEntry();
+            } else {
+                renderSettings();
+            }
+        }
+        closeModal();
+    };
 }
 // === Analytics ===
 function renderAnalytics() {
@@ -466,11 +482,35 @@ function renderSettings() {
         const li = document.createElement('li');
         li.className = 'settings-item';
         
-        li.innerHTML = `
-            <input type="text" value="${cat.name}" data-idx="${idx}">
-            <button class="icon-btn danger delete-cat">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+        let itemsHtml = '<div class="settings-items-list">';
+        if (cat.items && cat.items.length > 0) {
+            cat.items.forEach((item, itemIdx) => {
+                itemsHtml += `
+                    <div class="settings-subitem">
+                        <span>${item}</span>
+                        <button class="icon-btn danger delete-subitem" data-item="${itemIdx}">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                        </button>
+                    </div>
+                `;
+            });
+        }
+        itemsHtml += `
+            <button class="btn-add-item" data-catid="${cat.id}">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+                Добавить наименование
             </button>
+        </div>`;
+        li.innerHTML = `
+            <div style="display:flex; flex-direction:column; width:100%;">
+                <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:8px;">
+                    <input type="text" value="${cat.name}" data-idx="${idx}" style="font-weight:600; font-size:18px; outline:none; border:none; background:transparent;">
+                    <button class="icon-btn danger delete-cat">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                    </button>
+                </div>
+                ${itemsHtml}
+            </div>
         `;
         
         const input = li.querySelector('input');
@@ -485,11 +525,25 @@ function renderSettings() {
             }
         });
         delBtn.addEventListener('click', () => {
-            if (confirm(`Удалить категорию "${cat.name}"?`)) {
+            if (confirm(`Удалить категорию "${cat.name}" и все её наименования?`)) {
                 state.categories.splice(idx, 1);
                 saveState('categories');
                 renderSettings();
             }
+        });
+        const deleteSubItemBtns = li.querySelectorAll('.delete-subitem');
+        deleteSubItemBtns.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const iIdx = parseInt(btn.getAttribute('data-item'));
+                state.categories[idx].items.splice(iIdx, 1);
+                saveState('categories');
+                renderSettings();
+            });
+        });
+        const btnAdd = li.querySelector('.btn-add-item');
+        btnAdd.addEventListener('click', () => {
+            openModal(cat.id);
         });
         list.appendChild(li);
     });
@@ -563,5 +617,6 @@ document.addEventListener('DOMContentLoaded', () => {
     loadState();
     initNavigation();
     initCalendar();
+    initModal();
     renderDataEntry();
 });
