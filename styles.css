@@ -68,7 +68,7 @@ main#view-container {
     font-weight: 600;
 }
 .content-scrollable {
-    padding: 10px 20px 20px;
+    padding: 10px 20px 120px; /* Увеличен отступ снизу */
     display: flex;
     flex-direction: column;
     gap: 16px;
@@ -586,6 +586,21 @@ main#view-container {
     margin-top: 12px;
     padding: 4px 0;
 }
+/* === Auth Overlay === */
+#auth-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: var(--bg-color);
+    z-index: 3000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+#auth-overlay.hidden {
+    display: none;
+}
 /* Chart */
 .chart-container {
     height: 200px;
@@ -648,6 +663,13 @@ main#view-container {
         margin-bottom: 12px;
         border: 1px solid var(--border);
         position: relative;
+        transition: transform 0.3s ease, box-shadow 0.3s ease, outline 0.3s ease;
+    }
+    .table-row:focus-within {
+        transform: scale(1.03);
+        box-shadow: 0 12px 30px rgba(0,0,0,0.1);
+        outline: 2px solid var(--accent-income);
+        z-index: 10;
     }
     .table-row:last-child {
         border-bottom: 1px solid var(--border);
