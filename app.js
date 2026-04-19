@@ -338,6 +338,7 @@ function renderAnalytics() {
         let totalInc = 0;
         let totalExp = 0;
         const catTotals = {};
+        const catDetails = {};
         const dailyIncomes = [];
         // Loop through all days in range
         let curr = new Date(from);
@@ -352,6 +353,14 @@ function renderAnalytics() {
                 totalExp += am;
                 if (am > 0 && e.categoryId) {
                     catTotals[e.categoryId] = (catTotals[e.categoryId] || 0) + am;
+                    
+                    if (!catDetails[e.categoryId]) catDetails[e.categoryId] = {};
+                    const n = (e.name || 'Без названия').trim();
+                    const nLower = n.toLowerCase();
+                    if (!catDetails[e.categoryId][nLower]) {
+                        catDetails[e.categoryId][nLower] = { name: n.charAt(0).toUpperCase() + n.slice(1), amount: 0 };
+                    }
+                    catDetails[e.categoryId][nLower].amount += am;
                 }
             });
             curr.setDate(curr.getDate() + 1);
@@ -372,19 +381,45 @@ function renderAnalytics() {
             const cat = state.categories.find(c => c.id === catId);
             const name = cat ? cat.name : 'Удаленная категория';
             
-            const el = document.createElement('div');
-            el.className = 'cat-item';
-            
+            let detailsHtml = '';
+            if (catDetails[catId]) {
+                const sortedDetails = Object.values(catDetails[catId]).sort((a,b) => b.amount - a.amount);
+                const detailItemsHtml = sortedDetails.map(d => `
+                    <div class="cat-detail-item">
+                        <span>${d.name}</span>
+                        <span>${formatNumber(d.amount)} ₽</span>
+                    </div>
+                `).join('');
+                detailsHtml = `<div class="cat-details-list">${detailItemsHtml}</div>`;
+            }
             const percHtml = totalExp > 0 ? ` <span class="muted" style="font-weight:400; font-size:13px; margin-left:4px;">(${Math.round(amount/totalExp*100)}%)</span>` : '';
+            const chevronHtml = detailsHtml ? `<svg class="cat-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>` : '';
             
-            el.innerHTML = `
-                <div class="cat-item-info">
-                    <div class="cat-color"></div>
-                    <div class="cat-name">${name}</div>
+            const wrapper = document.createElement('div');
+            wrapper.className = 'cat-wrapper';
+            
+            wrapper.innerHTML = `
+                <div class="cat-item">
+                    <div class="cat-item-info">
+                        <div class="cat-color"></div>
+                        <div class="cat-name">${name}</div>
+                    </div>
+                    <div class="cat-amount-wrapper">
+                        <div class="cat-amount">${formatNumber(amount)} ₽${percHtml}</div>
+                        ${chevronHtml}
+                    </div>
                 </div>
-                <div class="cat-amount">${formatNumber(amount)} ₽${percHtml}</div>
+                ${detailsHtml}
             `;
-            reportContainer.appendChild(el);
+            
+            if (detailsHtml) {
+                const header = wrapper.querySelector('.cat-item');
+                header.addEventListener('click', () => {
+                    wrapper.classList.toggle('expanded');
+                });
+            }
+            
+            reportContainer.appendChild(wrapper);
         });
         
         if (sortedCats.length === 0) {
