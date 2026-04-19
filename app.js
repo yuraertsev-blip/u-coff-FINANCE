@@ -1,19 +1,18 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
 import { getFirestore, doc, onSnapshot, setDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 // === Firebase Init ===
-console.log("App Version: 2.0.1 - Cloud Sync Fixed");
+console.log("App Version: 2.1.0 - New Database");
 let app, db;
 let unsubscribeSnapshot = null;
 try {
     const firebaseConfig = {
-      apiKey: "AIzaSyC0rFOiAx5LEpT-6s9Bc8sxNtc59RfsOcM",
-      authDomain: "u-coffee.firebaseapp.com",
-      databaseURL: "https://u-coffee-default-rtdb.firebaseio.com",
-      projectId: "u-coffee",
-      storageBucket: "u-coffee.firebasestorage.app",
-      messagingSenderId: "971000964907",
-      appId: "1:971000964907:web:5763d4ced46cdd1b6ac76e",
-      measurementId: "G-2DZQ429YT2"
+      apiKey: "AIzaSyA3dem18WFrq2mNA1_pCJfIWBYcGsS0i6Q",
+      authDomain: "ucoffeefinance.firebaseapp.com",
+      projectId: "ucoffeefinance",
+      storageBucket: "ucoffeefinance.firebasestorage.app",
+      messagingSenderId: "944990472119",
+      appId: "1:944990472119:web:21e00ba400c9cd91dd4a32",
+      measurementId: "G-VX2T9S465Y"
     };
     app = initializeApp(firebaseConfig);
     db = getFirestore(app);
