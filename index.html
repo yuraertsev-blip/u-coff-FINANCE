@@ -12,8 +12,24 @@
     <link rel="icon" type="image/svg+xml" href="icon.svg">
     <link rel="apple-touch-icon" href="icon.svg">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
 </head>
 <body>
+    <div id="auth-overlay">
+        <div class="modal-card" style="margin: auto;">
+            <h3>Вход в Ю кофе</h3>
+            <p style="margin-bottom: 20px; font-size: 14px; color: var(--text-muted)">Введите данные для входа в облачную базу</p>
+            <input type="email" id="auth-email" class="modal-input" placeholder="Email (например auth@ucoffee.ru)" autocomplete="email">
+            <input type="password" id="auth-pwd" class="modal-input" placeholder="Пароль" autocomplete="current-password">
+            <div style="display:flex; flex-direction:column; gap:8px;">
+                <button id="auth-login-btn" class="btn-outline primary">Войти</button>
+                <button id="auth-reg-btn" class="btn-outline">Регистрация</button>
+            </div>
+            <p id="auth-error" style="color: var(--accent-expense); font-size: 13px; margin-top: 12px; display: none;"></p>
+        </div>
+    </div>
     <div id="app">
         <!-- Views will be dynamically injected here -->
         <main id="view-container">
