@@ -1,6 +1,5 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
 import { getFirestore, doc, onSnapshot, setDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
-import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 // === Firebase Init ===
 const firebaseConfig = {
   apiKey: "AIzaSyC0rFOiAx5LEpT-6s9Bc8sxNtc59RfsOcM",
@@ -14,8 +13,6 @@ const firebaseConfig = {
 };
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
-const auth = getAuth(app);
-let currentUser = null;
 let unsubscribeSnapshot = null;
 // === State & LocalStorage ===
 const STORE_PREFIX = 'u_coffee';
@@ -33,11 +30,9 @@ let state = {
     expenses: {} // { 'YYYY-MM-DD': [{ id, name, categoryId, amount }] }
 };
 function loadState() {
-    if (!currentUser) return;
-    
     if (unsubscribeSnapshot) unsubscribeSnapshot();
     
-    unsubscribeSnapshot = onSnapshot(doc(db, 'coffee_shops', currentUser.uid), (docSnap) => {
+    unsubscribeSnapshot = onSnapshot(doc(db, 'coffee_db', 'main_state'), (docSnap) => {
         if (docSnap.exists()) {
             const data = docSnap.data();
             state.categories = data.categories || [...DEFAULT_CATEGORIES];
@@ -59,8 +54,7 @@ function loadState() {
     });
 }
 function saveState(key) {
-    if (!currentUser) return;
-    setDoc(doc(db, 'coffee_shops', currentUser.uid), {
+    setDoc(doc(db, 'coffee_db', 'main_state'), {
         categories: state.categories,
         income: state.income,
         expenses: state.expenses
@@ -774,46 +768,9 @@ function renderSettings() {
         reader.readAsText(file);
     };
 }
-// === Auth ===
-function initAuth() {
-    const overlay = document.getElementById('auth-overlay');
-    const emailIn = document.getElementById('auth-email');
-    const pwdIn = document.getElementById('auth-pwd');
-    const errEl = document.getElementById('auth-error');
-    
-    onAuthStateChanged(auth, (user) => {
-        if (user) {
-            currentUser = user;
-            overlay.classList.add('hidden');
-            loadState(); // Starts cloud syncing
-        } else {
-            currentUser = null;
-            if (unsubscribeSnapshot) unsubscribeSnapshot();
-            overlay.classList.remove('hidden');
-        }
-    });
-    document.getElementById('auth-login-btn').onclick = () => {
-        const e = emailIn.value.trim();
-        const p = pwdIn.value.trim();
-        if(!e || !p) return (errEl.style.display = 'block', errEl.textContent = 'Введите email и пароль');
-        signInWithEmailAndPassword(auth, e, p).catch(err => {
-            errEl.style.display = 'block';
-            errEl.textContent = err.message;
-        });
-    };
-    document.getElementById('auth-reg-btn').onclick = () => {
-        const e = emailIn.value.trim();
-        const p = pwdIn.value.trim();
-        if(!e || !p) return (errEl.style.display = 'block', errEl.textContent = 'Введите email и пароль');
-        createUserWithEmailAndPassword(auth, e, p).catch(err => {
-            errEl.style.display = 'block';
-            errEl.textContent = err.message;
-        });
-    };
-}
 // === Init ===
 document.addEventListener('DOMContentLoaded', () => {
-    initAuth();
+    loadState();
     initNavigation();
     initCalendar();
     initModal();
