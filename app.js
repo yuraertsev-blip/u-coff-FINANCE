@@ -1,19 +1,25 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
 import { getFirestore, doc, onSnapshot, setDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 // === Firebase Init ===
-const firebaseConfig = {
-  apiKey: "AIzaSyC0rFOiAx5LEpT-6s9Bc8sxNtc59RfsOcM",
-  authDomain: "u-coffee.firebaseapp.com",
-  databaseURL: "https://u-coffee-default-rtdb.firebaseio.com",
-  projectId: "u-coffee",
-  storageBucket: "u-coffee.firebasestorage.app",
-  messagingSenderId: "971000964907",
-  appId: "1:971000964907:web:5763d4ced46cdd1b6ac76e",
-  measurementId: "G-2DZQ429YT2"
-};
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
+console.log("App Version: 2.0.1 - Cloud Sync Fixed");
+let app, db;
 let unsubscribeSnapshot = null;
+try {
+    const firebaseConfig = {
+      apiKey: "AIzaSyC0rFOiAx5LEpT-6s9Bc8sxNtc59RfsOcM",
+      authDomain: "u-coffee.firebaseapp.com",
+      databaseURL: "https://u-coffee-default-rtdb.firebaseio.com",
+      projectId: "u-coffee",
+      storageBucket: "u-coffee.firebasestorage.app",
+      messagingSenderId: "971000964907",
+      appId: "1:971000964907:web:5763d4ced46cdd1b6ac76e",
+      measurementId: "G-2DZQ429YT2"
+    };
+    app = initializeApp(firebaseConfig);
+    db = getFirestore(app);
+} catch (e) {
+    console.error("Firebase init fallback error:", e);
+}
 // === State & LocalStorage ===
 const STORE_PREFIX = 'u_coffee';
 const DEFAULT_CATEGORIES = [
@@ -40,9 +46,9 @@ function loadState() {
             state.expenses = data.expenses || {};
             
             // Re-render based on current view
-            if (document.getElementById('view-data').classList.contains('active')) syncUIWithState();
-            if (document.getElementById('view-settings').classList.contains('active')) renderSettings();
-            if (document.getElementById('view-analytics').classList.contains('active')) renderAnalytics();
+            if (document.getElementById('view-data')?.classList.contains('active')) updateValuesOnly();
+            if (document.getElementById('view-settings')?.classList.contains('active')) renderSettings();
+            if (document.getElementById('view-analytics')?.classList.contains('active')) renderAnalytics();
         } else {
             state.categories = [...DEFAULT_CATEGORIES];
             state.income = {};
@@ -104,7 +110,7 @@ function initNavigation() {
             });
             // Refresh specific views on enter
             if (targetId === 'view-data') {
-                syncUIWithState();
+                updateValuesOnly();
             } else if (targetId === 'view-analytics') {
                 renderAnalytics();
             } else if (targetId === 'view-settings') {
@@ -164,7 +170,7 @@ function renderCalendar() {
             state.currentDate = new Date(d);
             renderCalendar();
             renderDataEntry();
-            syncUIWithState();
+            updateValuesOnly();
         });
         
         grid.appendChild(el);
@@ -187,7 +193,7 @@ function setupInputFormatting(inputEl, callback) {
 }
 function renderDataEntry() {
     const incomeInput = document.getElementById('income-input');
-    if (!incomeInput.dataset.listenerAttached) {
+    if (incomeInput && !incomeInput.dataset.listenerAttached) {
         incomeInput.dataset.listenerAttached = 'true';
         incomeInput.addEventListener('focus', function() { this.select(); });
         setupInputFormatting(incomeInput, (val) => {
@@ -198,6 +204,7 @@ function renderDataEntry() {
         });
     }
     const rowsContainer = document.getElementById('expenses-rows');
+    if (!rowsContainer) return;
     rowsContainer.innerHTML = '';
     
     for (let idx = 0; idx < 15; idx++) {
@@ -232,7 +239,7 @@ function renderDataEntry() {
             const dateStr = formatDateStr(state.currentDate);
             updateExpense(dateStr, idx, 'categoryId', e.target.value);
             updateExpense(dateStr, idx, 'name', '');
-            syncUIWithState(); 
+            updateValuesOnly(); 
         });
         nameSelect.addEventListener('change', (e) => {
             const dateStr = formatDateStr(state.currentDate);
@@ -253,24 +260,25 @@ function renderDataEntry() {
             if (!state.expenses[dateStr]) return;
             state.expenses[dateStr][idx] = { name: '', categoryId: '', amount: 0 };
             saveState('expenses');
-            syncUIWithState();
+            updateValuesOnly();
         });
         rowsContainer.appendChild(row);
     }
 }
-function syncUIWithState() {
+function updateValuesOnly() {
     const dateStr = formatDateStr(state.currentDate);
     
     // Income
     const incomeInput = document.getElementById('income-input');
     const incomeVal = state.income[dateStr] || '';
-    if (document.activeElement !== incomeInput) {
+    if (incomeInput && document.activeElement !== incomeInput) {
         incomeInput.value = formatNumber(incomeVal);
     }
     
     // Expenses
     let dayExpenses = state.expenses[dateStr] || [];
     const rowsContainer = document.getElementById('expenses-rows');
+    if (!rowsContainer) return;
     const rows = rowsContainer.children;
     
     for (let idx = 0; idx < 15; idx++) {
@@ -281,28 +289,36 @@ function syncUIWithState() {
         const nameSelect = row.querySelector('.exp-name');
         const amountInput = row.querySelector('.exp-amount');
         const activeEl = document.activeElement;
-        if (activeEl !== catSelect) {
-            let catOptions = \`<option value="">Выбрать...</option>\`;
+        if (catSelect && activeEl !== catSelect) {
+            let catOptions = `<option value="">Выбрать...</option>`;
             state.categories.forEach(cat => {
-                catOptions += \`<option value="\${cat.id}" \${cat.id === exp.categoryId ? 'selected' : ''}>\${cat.name}</option>\`;
+                catOptions += `<option value="${cat.id}" ${cat.id === exp.categoryId ? 'selected' : ''}>${cat.name}</option>`;
             });
             catSelect.innerHTML = catOptions;
         }
-        if (activeEl !== nameSelect) {
+        if (nameSelect && activeEl !== nameSelect) {
             nameSelect.disabled = !exp.categoryId;
-            let nameOptions = \`<option value="">Выбрать...</option>\`;
+            let nameOptions = `<option value="">Выбрать...</option>`;
+            let hasItems = false;
+            
             if (exp.categoryId) {
                 const cat = state.categories.find(c => c.id === exp.categoryId);
-                if (cat && cat.items) {
+                if (cat && cat.items && cat.items.length > 0) {
+                    hasItems = true;
                     cat.items.forEach(item => {
-                        nameOptions += \`<option value="\${item}" \${item.toLowerCase() === (exp.name || '').toLowerCase() ? 'selected' : ''}>\${item}</option>\`;
+                        nameOptions += `<option value="${item}" ${item.toLowerCase() === (exp.name || '').toLowerCase() ? 'selected' : ''}>${item}</option>`;
                     });
                 }
-                nameOptions += \`<option value="__add__" style="font-weight: 600; color: var(--accent-income);">+ Добавить наименование</option>\`;
+                
+                if (!hasItems) {
+                    nameOptions = `<option value="__add__" style="font-weight: 600; color: var(--accent-income);">+ Добавить наименование</option>`;
+                } else {
+                    nameOptions += `<option value="__add__" style="font-weight: 600; color: var(--accent-income);">+ Добавить наименование</option>`;
+                }
             }
             nameSelect.innerHTML = nameOptions;
         }
-        if (activeEl !== amountInput) {
+        if (amountInput && activeEl !== amountInput) {
             amountInput.value = formatNumber(exp.amount) || '';
         }
     }
@@ -362,7 +378,7 @@ function initModal() {
             
             if (currentModalContext.rowIndex !== null && currentModalContext.dateStr) {
                 updateExpense(currentModalContext.dateStr, currentModalContext.rowIndex, 'name', valUpper);
-                renderDataEntry();
+                updateValuesOnly();
             } else {
                 renderSettings();
             }
@@ -799,9 +815,13 @@ function renderSettings() {
 }
 // === Init ===
 document.addEventListener('DOMContentLoaded', () => {
-    initNavigation();
-    initCalendar();
-    initModal();
-    renderDataEntry(); // Build UI structure once
-    loadState();       // Connect Firebase and sync data
+    try {
+        initNavigation();
+        initCalendar();
+        initModal();
+        renderDataEntry(); // Build UI structure once
+        loadState();       // Connect Firebase and sync data
+    } catch (e) {
+        console.error("Critical error during app init:", e);
+    }
 });
