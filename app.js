@@ -40,7 +40,7 @@ function loadState() {
             state.expenses = data.expenses || {};
             
             // Re-render based on current view
-            if (document.getElementById('view-data').classList.contains('active')) renderDataEntry();
+            if (document.getElementById('view-data').classList.contains('active')) syncUIWithState();
             if (document.getElementById('view-settings').classList.contains('active')) renderSettings();
             if (document.getElementById('view-analytics').classList.contains('active')) renderAnalytics();
         } else {
@@ -104,7 +104,7 @@ function initNavigation() {
             });
             // Refresh specific views on enter
             if (targetId === 'view-data') {
-                renderDataEntry();
+                syncUIWithState();
             } else if (targetId === 'view-analytics') {
                 renderAnalytics();
             } else if (targetId === 'view-settings') {
@@ -164,6 +164,7 @@ function renderCalendar() {
             state.currentDate = new Date(d);
             renderCalendar();
             renderDataEntry();
+            syncUIWithState();
         });
         
         grid.appendChild(el);
@@ -184,15 +185,18 @@ function setupInputFormatting(inputEl, callback) {
         if (callback) callback(parseNumber(e.target.value));
     });
 }
-function initDataEntry() {
+function renderDataEntry() {
     const incomeInput = document.getElementById('income-input');
-    incomeInput.addEventListener('focus', function() { this.select(); });
-    setupInputFormatting(incomeInput, (val) => {
-        const dateStr = formatDateStr(state.currentDate);
-        state.income[dateStr] = val;
-        saveState('income');
-        renderCalendar(); 
-    });
+    if (!incomeInput.dataset.listenerAttached) {
+        incomeInput.dataset.listenerAttached = 'true';
+        incomeInput.addEventListener('focus', function() { this.select(); });
+        setupInputFormatting(incomeInput, (val) => {
+            const dateStr = formatDateStr(state.currentDate);
+            state.income[dateStr] = val;
+            saveState('income');
+            renderCalendar(); 
+        });
+    }
     const rowsContainer = document.getElementById('expenses-rows');
     rowsContainer.innerHTML = '';
     
@@ -228,7 +232,7 @@ function initDataEntry() {
             const dateStr = formatDateStr(state.currentDate);
             updateExpense(dateStr, idx, 'categoryId', e.target.value);
             updateExpense(dateStr, idx, 'name', '');
-            renderDataEntry(); 
+            syncUIWithState(); 
         });
         nameSelect.addEventListener('change', (e) => {
             const dateStr = formatDateStr(state.currentDate);
@@ -249,12 +253,12 @@ function initDataEntry() {
             if (!state.expenses[dateStr]) return;
             state.expenses[dateStr][idx] = { name: '', categoryId: '', amount: 0 };
             saveState('expenses');
-            renderDataEntry();
+            syncUIWithState();
         });
         rowsContainer.appendChild(row);
     }
 }
-function renderDataEntry() {
+function syncUIWithState() {
     const dateStr = formatDateStr(state.currentDate);
     
     // Income
@@ -265,12 +269,13 @@ function renderDataEntry() {
     }
     
     // Expenses
-    let dayExpenses = state.expenses[dateStr] || Array(15).fill().map(() => ({ name: '', categoryId: '', amount: 0 }));
+    let dayExpenses = state.expenses[dateStr] || [];
     const rowsContainer = document.getElementById('expenses-rows');
-    const rows = rowsContainer.querySelectorAll('.table-row');
+    const rows = rowsContainer.children;
     
-    dayExpenses.forEach((exp, idx) => {
-        if (idx >= rows.length) return;
+    for (let idx = 0; idx < 15; idx++) {
+        if (idx >= rows.length) break;
+        const exp = dayExpenses[idx] || { name: '', categoryId: '', amount: 0 };
         const row = rows[idx];
         const catSelect = row.querySelector('.exp-cat');
         const nameSelect = row.querySelector('.exp-name');
@@ -300,7 +305,7 @@ function renderDataEntry() {
         if (activeEl !== amountInput) {
             amountInput.value = formatNumber(exp.amount) || '';
         }
-    });
+    }
     updateExpenseTotal(dateStr);
 }
 function updateExpense(dateStr, index, field, value) {
@@ -794,9 +799,9 @@ function renderSettings() {
 }
 // === Init ===
 document.addEventListener('DOMContentLoaded', () => {
-    initDataEntry();
-    loadState();
     initNavigation();
     initCalendar();
     initModal();
+    renderDataEntry(); // Build UI structure once
+    loadState();       // Connect Firebase and sync data
 });
