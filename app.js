@@ -125,13 +125,17 @@ function initCalendar() {
     const btnNext = document.getElementById('cal-next');
     
     btnPrev.addEventListener('click', () => {
-        state.currentDate.setMonth(state.currentDate.getMonth() - 1);
+        state.currentDate = new Date(state.currentDate.getFullYear(), state.currentDate.getMonth() - 1, 1);
         renderCalendar();
+        renderDataEntry();
+        updateValuesOnly();
     });
     
     btnNext.addEventListener('click', () => {
-        state.currentDate.setMonth(state.currentDate.getMonth() + 1);
+        state.currentDate = new Date(state.currentDate.getFullYear(), state.currentDate.getMonth() + 1, 1);
         renderCalendar();
+        renderDataEntry();
+        updateValuesOnly();
     });
     renderCalendar();
 }
@@ -140,29 +144,31 @@ function renderCalendar() {
     document.getElementById('cal-month-year').textContent = monthYearStr.charAt(0).toUpperCase() + monthYearStr.slice(1);
     const grid = document.getElementById('cal-days-grid');
     grid.innerHTML = '';
-    // Generate a simple week view for prototype (centered around selected date)
-    // For a full app, we would make a swipable calendar. Here we show 7 days.
-    const startOfWeek = new Date(state.currentDate);
-    const dayOfWeek = startOfWeek.getDay() === 0 ? 6 : startOfWeek.getDay() - 1; // Mon=0
-    startOfWeek.setDate(startOfWeek.getDate() - dayOfWeek);
-    const weekdays = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
-    for (let i = 0; i < 7; i++) {
-        const d = new Date(startOfWeek);
-        d.setDate(d.getDate() + i);
+    const year = state.currentDate.getFullYear();
+    const month = state.currentDate.getMonth();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const weekdays = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
+    let activeElement = null;
+    for (let i = 1; i <= daysInMonth; i++) {
+        const d = new Date(year, month, i);
         const dateStr = formatDateStr(d);
         
         const el = document.createElement('div');
         el.className = 'cal-day';
+        
         if (dateStr === formatDateStr(state.currentDate)) {
             el.classList.add('active');
+            activeElement = el;
         }
         
         // Has data marker
         if (state.income[dateStr] > 0 || (state.expenses[dateStr] && state.expenses[dateStr].some(e => e.amount > 0))) {
             el.classList.add('has-data');
         }
+        const weekdayIndex = d.getDay();
+        
         el.innerHTML = `
-            <span class="weekday">${weekdays[i]}</span>
+            <span class="weekday">${weekdays[weekdayIndex]}</span>
             <span class="day-num">${d.getDate()}</span>
         `;
         
@@ -174,6 +180,12 @@ function renderCalendar() {
         });
         
         grid.appendChild(el);
+    }
+    
+    if (activeElement) {
+        requestAnimationFrame(() => {
+            activeElement.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        });
     }
 }
 // === Data Entry ===
