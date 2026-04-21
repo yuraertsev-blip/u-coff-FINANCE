@@ -31,9 +31,25 @@ const DEFAULT_CATEGORIES = [
 let state = {
     currentDate: new Date(),
     categories: [],
-    income: {}, // { 'YYYY-MM-DD': amount }
+    income: {}, // { 'YYYY-MM-DD': { cash: 0, terminal: 0 } }
     expenses: {} // { 'YYYY-MM-DD': [{ id, name, categoryId, amount }] }
 };
+// Auto-migrate old income format (number → {cash, terminal})
+function migrateIncome(income) {
+    if (!income) return {};
+    for (const key of Object.keys(income)) {
+        if (typeof income[key] === 'number') {
+            income[key] = { cash: income[key], terminal: 0 };
+        }
+    }
+    return income;
+}
+// Helper: total daily income from cash + terminal
+function getDailyTotalIncome(dateStr) {
+    const inc = state.income[dateStr];
+    if (!inc) return 0;
+    return (parseInt(inc.cash) || 0) + (parseInt(inc.terminal) || 0);
+}
 function loadState() {
     if (unsubscribeSnapshot) unsubscribeSnapshot();
     
@@ -41,11 +57,19 @@ function loadState() {
         if (docSnap.exists()) {
             const data = docSnap.data();
             state.categories = data.categories || [...DEFAULT_CATEGORIES];
-            state.income = data.income || {};
+            state.income = migrateIncome(data.income || {});
             state.expenses = data.expenses || {};
             
-            // Re-render based on current view
-            if (document.getElementById('view-data')?.classList.contains('active')) updateValuesOnly();
+            // Skip DOM rebuild if user is actively typing — only update values
+            const active = document.activeElement;
+            const isUserTyping = active && (active.tagName === 'INPUT' || active.tagName === 'SELECT');
+            
+            if (document.getElementById('view-data')?.classList.contains('active')) {
+                if (!isUserTyping) {
+                    renderCalendar();
+                }
+                updateValuesOnly();
+            }
             if (document.getElementById('view-settings')?.classList.contains('active')) renderSettings();
             if (document.getElementById('view-analytics')?.classList.contains('active')) renderAnalytics();
         } else {
@@ -161,7 +185,7 @@ function renderCalendar() {
         }
         
         // Has data marker
-        if (state.income[dateStr] > 0 || (state.expenses[dateStr] && state.expenses[dateStr].some(e => e.amount > 0))) {
+        if (getDailyTotalIncome(dateStr) > 0 || (state.expenses[dateStr] && state.expenses[dateStr].some(e => e.amount > 0))) {
             el.classList.add('has-data');
         }
         const weekdayIndex = d.getDay();
@@ -202,17 +226,42 @@ function setupInputFormatting(inputEl, callback) {
         if (callback) callback(parseNumber(e.target.value));
     });
 }
+// Update income day total display without rebuilding DOM
+function updateIncomeDayTotal() {
+    const dateStr = formatDateStr(state.currentDate);
+    const total = getDailyTotalIncome(dateStr);
+    const el = document.getElementById('income-day-total');
+    if (el) el.textContent = `${formatNumber(total)} ₽`;
+}
 function renderDataEntry() {
-    const incomeInput = document.getElementById('income-input');
-    if (incomeInput && !incomeInput.dataset.listenerAttached) {
-        incomeInput.dataset.listenerAttached = 'true';
-        incomeInput.addEventListener('focus', function() { this.select(); });
-        setupInputFormatting(incomeInput, (val) => {
+    // Setup cash input
+    const cashInput = document.getElementById('inc-cash');
+    if (cashInput && !cashInput.dataset.listenerAttached) {
+        cashInput.dataset.listenerAttached = 'true';
+        cashInput.addEventListener('focus', function() { this.select(); });
+        setupInputFormatting(cashInput, (val) => {
             const dateStr = formatDateStr(state.currentDate);
-            state.income[dateStr] = val;
+            if (!state.income[dateStr]) state.income[dateStr] = { cash: 0, terminal: 0 };
+            state.income[dateStr].cash = val;
             saveState('income');
-            renderCalendar(); 
+            updateIncomeDayTotal();
         });
+        // Refresh calendar only on blur to avoid scroll jumps
+        cashInput.addEventListener('blur', () => renderCalendar());
+    }
+    // Setup terminal input
+    const terminalInput = document.getElementById('inc-terminal');
+    if (terminalInput && !terminalInput.dataset.listenerAttached) {
+        terminalInput.dataset.listenerAttached = 'true';
+        terminalInput.addEventListener('focus', function() { this.select(); });
+        setupInputFormatting(terminalInput, (val) => {
+            const dateStr = formatDateStr(state.currentDate);
+            if (!state.income[dateStr]) state.income[dateStr] = { cash: 0, terminal: 0 };
+            state.income[dateStr].terminal = val;
+            saveState('income');
+            updateIncomeDayTotal();
+        });
+        terminalInput.addEventListener('blur', () => renderCalendar());
     }
     const rowsContainer = document.getElementById('expenses-rows');
     if (!rowsContainer) return;
@@ -256,7 +305,7 @@ function renderDataEntry() {
             const dateStr = formatDateStr(state.currentDate);
             if (e.target.value === '__add__') {
                 const exps = state.expenses[dateStr] || [];
-                e.target.value = (exps[idx] && exps[idx].name) || ''; // revert UI immediately
+                e.target.value = (exps[idx] && exps[idx].name) || '';
                 openModal(catSelect.value, idx, dateStr);
             } else {
                 updateExpense(dateStr, idx, 'name', e.target.value);
@@ -278,13 +327,20 @@ function renderDataEntry() {
 }
 function updateValuesOnly() {
     const dateStr = formatDateStr(state.currentDate);
+    const activeEl = document.activeElement;
     
-    // Income
-    const incomeInput = document.getElementById('income-input');
-    const incomeVal = state.income[dateStr] || '';
-    if (incomeInput && document.activeElement !== incomeInput) {
-        incomeInput.value = formatNumber(incomeVal);
+    // Income — cash & terminal
+    const incData = state.income[dateStr] || { cash: 0, terminal: 0 };
+    const cashInput = document.getElementById('inc-cash');
+    const terminalInput = document.getElementById('inc-terminal');
+    
+    if (cashInput && activeEl !== cashInput) {
+        cashInput.value = formatNumber(incData.cash) || '';
     }
+    if (terminalInput && activeEl !== terminalInput) {
+        terminalInput.value = formatNumber(incData.terminal) || '';
+    }
+    updateIncomeDayTotal();
     
     // Expenses
     let dayExpenses = state.expenses[dateStr] || [];
@@ -343,8 +399,9 @@ function updateExpense(dateStr, index, field, value) {
     saveState('expenses');
     
     if (field === 'amount') {
+        // Smart focus: only update total text, don't rebuild expense table
         updateExpenseTotal(dateStr);
-        renderCalendar(); // Update dots
+        // Defer calendar dot update to avoid scroll jumps during typing
     }
 }
 function updateExpenseTotal(dateStr) {
@@ -398,6 +455,8 @@ function initModal() {
     };
 }
 // === Analytics ===
+// Store period totals for the income detail modal
+let analyticsTotals = { cash: 0, terminal: 0 };
 function renderAnalytics() {
     const dateFromEl = document.getElementById('date-from');
     const dateToEl = document.getElementById('date-to');
@@ -419,6 +478,8 @@ function renderAnalytics() {
         const to = parseLocalDate(dateToEl.value);
         if (from > to) return;
         let totalInc = 0;
+        let totalCash = 0;
+        let totalTerminal = 0;
         let totalExp = 0;
         const catTotals = {};
         const catDetails = {};
@@ -427,7 +488,12 @@ function renderAnalytics() {
         let curr = new Date(from);
         while (curr <= to) {
             const dStr = formatDateStr(curr);
-            const inc = parseInt(state.income[dStr]) || 0;
+            const incData = state.income[dStr] || { cash: 0, terminal: 0 };
+            const cash = parseInt(incData.cash) || 0;
+            const terminal = parseInt(incData.terminal) || 0;
+            const inc = cash + terminal;
+            totalCash += cash;
+            totalTerminal += terminal;
             totalInc += inc;
             dailyIncomes.push({ date: dStr, val: inc });
             const exps = state.expenses[dStr] || [];
@@ -448,6 +514,8 @@ function renderAnalytics() {
             });
             curr.setDate(curr.getDate() + 1);
         }
+        // Save for income detail modal
+        analyticsTotals = { cash: totalCash, terminal: totalTerminal };
         // Summary Cards
         document.getElementById('summary-income').textContent = `${formatNumber(totalInc)} ₽`;
         document.getElementById('summary-expense').textContent = `${formatNumber(totalExp)} ₽`;
@@ -517,6 +585,18 @@ function renderAnalytics() {
         this.classList.toggle('open');
         document.getElementById('category-report').classList.toggle('hidden');
     };
+    // Income detail modal — open on summary card click
+    const incomeCard = document.querySelector('.summary-card.income');
+    if (incomeCard) {
+        incomeCard.onclick = () => {
+            document.getElementById('detail-cash').textContent = `${formatNumber(analyticsTotals.cash)} ₽`;
+            document.getElementById('detail-terminal').textContent = `${formatNumber(analyticsTotals.terminal)} ₽`;
+            document.getElementById('income-detail-modal').classList.remove('hidden');
+        };
+    }
+    document.getElementById('income-modal-close').onclick = () => {
+        document.getElementById('income-detail-modal').classList.add('hidden');
+    };
     document.getElementById('btn-export-excel').onclick = exportToExcel;
     calcAndRender();
 }
@@ -565,7 +645,8 @@ async function exportToExcel() {
         for (let i = 1; i <= daysInMonth; i++) {
             const dStr = `${year}-${month}-${i.toString().padStart(2, '0')}`;
             
-            const inc = parseInt(state.income[dStr]) || 0;
+            const incData = state.income[dStr] || { cash: 0, terminal: 0 };
+            const inc = (parseInt(incData.cash) || 0) + (parseInt(incData.terminal) || 0);
             if (inc > 0) {
                 totalInc += inc;
                 monthIncomes.push({ date: dStr, val: inc });
