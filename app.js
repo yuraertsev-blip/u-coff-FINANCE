@@ -521,69 +521,72 @@ function renderAnalytics() {
         document.getElementById('summary-expense').textContent = `${formatNumber(totalExp)} ₽`;
         // Render Chart
         renderChart(dailyIncomes);
-        // Render Category Report
-        const reportContainer = document.getElementById('category-report');
-        reportContainer.innerHTML = '';
-        
-        // Sort categories by amount desc
+        // Build category report HTML for modal
         const sortedCats = Object.entries(catTotals).sort((a,b) => b[1] - a[1]);
-        
-        sortedCats.forEach(([catId, amount]) => {
-            const cat = state.categories.find(c => c.id === catId);
-            const name = cat ? cat.name : 'Удаленная категория';
-            
-            let detailsHtml = '';
-            if (catDetails[catId]) {
-                const sortedDetails = Object.values(catDetails[catId]).sort((a,b) => b.amount - a.amount);
-                const detailItemsHtml = sortedDetails.map(d => `
-                    <div class="cat-detail-item">
-                        <span>${d.name}</span>
-                        <span>${formatNumber(d.amount)} ₽</span>
-                    </div>
-                `).join('');
-                detailsHtml = `<div class="cat-details-list">${detailItemsHtml}</div>`;
-            }
-            const percHtml = totalExp > 0 ? ` <span class="muted" style="font-weight:400; font-size:13px; margin-left:4px;">(${Math.round(amount/totalExp*100)}%)</span>` : '';
-            const chevronHtml = detailsHtml ? `<svg class="cat-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>` : '';
-            
-            const wrapper = document.createElement('div');
-            wrapper.className = 'cat-wrapper';
-            
-            wrapper.innerHTML = `
-                <div class="cat-item">
-                    <div class="cat-item-info">
-                        <div class="cat-color"></div>
-                        <div class="cat-name">${name}</div>
-                    </div>
-                    <div class="cat-amount-wrapper">
-                        <div class="cat-amount">${formatNumber(amount)} ₽${percHtml}</div>
-                        ${chevronHtml}
-                    </div>
-                </div>
-                ${detailsHtml}
-            `;
-            
-            if (detailsHtml) {
-                const header = wrapper.querySelector('.cat-item');
-                header.addEventListener('click', () => {
-                    wrapper.classList.toggle('expanded');
-                });
-            }
-            
-            reportContainer.appendChild(wrapper);
-        });
+        let reportHtml = '';
         
         if (sortedCats.length === 0) {
-            reportContainer.innerHTML = '<p class="muted">Нет расходов за этот период</p>';
+            reportHtml = '<p class="muted">Нет расходов за этот период</p>';
+        } else {
+            sortedCats.forEach(([catId, amount]) => {
+                const cat = state.categories.find(c => c.id === catId);
+                const name = cat ? cat.name : 'Удаленная категория';
+                const perc = totalExp > 0 ? ` <span class="muted" style="font-weight:400; font-size:13px; margin-left:4px;">(${Math.round(amount/totalExp*100)}%)</span>` : '';
+                
+                let detailItems = '';
+                if (catDetails[catId]) {
+                    const sorted = Object.values(catDetails[catId]).sort((a,b) => b.amount - a.amount);
+                    detailItems = sorted.map(d => `
+                        <div class="modal-cat-subitem">
+                            <span>${d.name}</span>
+                            <span>${formatNumber(d.amount)} ₽</span>
+                        </div>
+                    `).join('');
+                }
+                
+                const chevron = detailItems ? '<svg class="cat-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>' : '';
+                
+                reportHtml += `
+                    <div class="modal-cat-wrapper">
+                        <div class="modal-cat-header">
+                            <div class="cat-item-info">
+                                <div class="cat-color"></div>
+                                <div class="cat-name">${name}</div>
+                            </div>
+                            <div class="cat-amount-wrapper">
+                                <div class="cat-amount">${formatNumber(amount)} ₽${perc}</div>
+                                ${chevron}
+                            </div>
+                        </div>
+                        ${detailItems ? `<div class="modal-cat-details">${detailItems}</div>` : ''}
+                    </div>
+                `;
+            });
         }
+        
+        document.getElementById('expense-modal-list').innerHTML = reportHtml;
+        
+        // Attach accordion toggle listeners after HTML is set
+        document.querySelectorAll('.modal-cat-wrapper').forEach(wrapper => {
+            const header = wrapper.querySelector('.modal-cat-header');
+            const details = wrapper.querySelector('.modal-cat-details');
+            if (header && details) {
+                header.addEventListener('click', () => wrapper.classList.toggle('expanded'));
+            }
+        });
     };
     dateFromEl.addEventListener('change', calcAndRender);
     dateToEl.addEventListener('change', calcAndRender);
     
-    // Toggle Report
-    document.getElementById('toggle-report-btn').onclick = function() {
-        this.classList.toggle('open');
-        document.getElementById('category-report').classList.toggle('hidden');
+    // Expense detail modal — open on summary card click
+    const expenseCard = document.querySelector('.summary-card.expense');
+    if (expenseCard) {
+        expenseCard.onclick = () => {
+            document.getElementById('expense-details-modal').classList.remove('hidden');
+        };
+    }
+    document.getElementById('expense-modal-close').onclick = () => {
+        document.getElementById('expense-details-modal').classList.add('hidden');
     };
     // Income detail modal — open on summary card click
     const incomeCard = document.querySelector('.summary-card.income');
