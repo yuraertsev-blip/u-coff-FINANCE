@@ -42,9 +42,22 @@
                                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
                             </div>
                         </div>
-                        <div class="input-modern">
-                            <input type="text" id="income-input" placeholder="0" inputmode="numeric">
-                            <span class="currency">₽</span>
+                        <div class="income-row">
+                            <label>Наличные</label>
+                            <div class="input-modern compact">
+                                <input type="text" id="inc-cash" placeholder="0" inputmode="numeric">
+                                <span class="currency">₽</span>
+                            </div>
+                        </div>
+                        <div class="income-row">
+                            <label>По терминалу</label>
+                            <div class="input-modern compact">
+                                <input type="text" id="inc-terminal" placeholder="0" inputmode="numeric">
+                                <span class="currency">₽</span>
+                            </div>
+                        </div>
+                        <div class="income-total">
+                            Итого: <span id="income-day-total">0 ₽</span>
                         </div>
                     </div>
                     <!-- Expenses Block -->
@@ -168,6 +181,23 @@
             </button>
         </nav>
         
+        <!-- Income Detail Modal -->
+        <div id="income-detail-modal" class="modal-overlay hidden">
+            <div class="modal-card">
+                <h3>Доходы за период</h3>
+                <div class="income-detail-rows">
+                    <div class="income-detail-row">
+                        <span>Наличные</span>
+                        <span id="detail-cash" class="income-detail-value">0 ₽</span>
+                    </div>
+                    <div class="income-detail-row">
+                        <span>По терминалу</span>
+                        <span id="detail-terminal" class="income-detail-value">0 ₽</span>
+                    </div>
+                </div>
+                <button id="income-modal-close" class="btn-outline" style="margin-top:16px;">Закрыть</button>
+            </div>
+        </div>
         <!-- Modal for adding items -->
         <div id="add-name-modal" class="modal-overlay hidden">
             <div class="modal-card">
