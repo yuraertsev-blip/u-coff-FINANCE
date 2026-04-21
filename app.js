@@ -821,7 +821,7 @@ function renderSettings() {
             }
         });
         delBtn.addEventListener('click', () => {
-            if (confirm(`Удалить категорию "${cat.name}" и все её наименования?`)) {
+            if (confirm(`Вы действительно хотите удалить всю категорию "${cat.name}" со всеми вложенными пунктами?`)) {
                 state.categories.splice(idx, 1);
                 saveState('categories');
                 renderSettings();
@@ -832,9 +832,12 @@ function renderSettings() {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const iIdx = parseInt(btn.getAttribute('data-item'));
-                state.categories[idx].items.splice(iIdx, 1);
-                saveState('categories');
-                renderSettings();
+                const itemName = state.categories[idx].items[iIdx];
+                if (confirm(`Вы уверены, что хотите удалить "${itemName}"?`)) {
+                    state.categories[idx].items.splice(iIdx, 1);
+                    saveState('categories');
+                    renderSettings();
+                }
             });
         });
         const btnAdd = li.querySelector('.btn-add-item');
