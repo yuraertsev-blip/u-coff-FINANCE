@@ -223,6 +223,51 @@ main#view-container {
     align-items: center;
     justify-content: center;
 }
+/* Split income fields */
+.income-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+}
+.income-row:last-of-type {
+    border-bottom: none;
+}
+.income-row label {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-muted);
+    white-space: nowrap;
+    min-width: 100px;
+}
+.input-modern.compact {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+.input-modern.compact input {
+    font-size: 22px;
+    text-align: right;
+}
+.input-modern.compact .currency {
+    font-size: 18px;
+}
+.income-total {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 12px;
+    margin-top: 4px;
+    border-top: 2px solid var(--border);
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--text-muted);
+}
+.income-total span {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--accent-income);
+}
 /* === Table === */
 .expenses-table {
     display: flex;
@@ -619,10 +664,20 @@ main#view-container {
     position: relative;
     display: flex;
     align-items: flex-end;
-    gap: 8px;
+    overflow-x: auto;
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+    gap: 12px;
+    padding-bottom: 15px;
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+.chart-container::-webkit-scrollbar {
+    display: none;
 }
 .chart-bar-wrapper {
-    flex: 1;
+    flex: 0 0 auto;
+    min-width: 32px;
     height: 100%;
     display: flex;
     flex-direction: column;
@@ -657,6 +712,36 @@ main#view-container {
 }
 .chart-bar-wrapper:hover .chart-tooltip {
     opacity: 1;
+}
+/* Income Detail Modal */
+.income-detail-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 16px;
+}
+.income-detail-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 16px;
+}
+.income-detail-row:last-child {
+    border-bottom: none;
+}
+.income-detail-value {
+    font-weight: 600;
+    color: var(--accent-income);
+}
+/* Summary card clickable */
+.summary-card.income {
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.summary-card.income:active {
+    transform: scale(0.97);
 }
 /* === Mobile Responsiveness === */
 @media (max-width: 500px) {
