@@ -981,41 +981,31 @@ function initAuth() {
     }
 
     loginBtn.addEventListener('click', async () => {
-        const username = document.getElementById('login-username').value.trim().toLowerCase();
+        const email = document.getElementById('login-email').value.trim();
         const password = document.getElementById('login-password').value;
-        loginError.textContent = '';
+        
+        if (!email || !password) {
+            loginError.textContent = 'Заполните все поля';
+            return;
+        }
+
         loginBtn.disabled = true;
         loginBtn.textContent = 'Вход...';
-        
-        if (username === 'coffee' && password === '2015redbull@') {
-            const email = 'ucoffee@ucoffee.app';
-            try {
-                // Пытаемся авторизоваться в Firebase, чтобы база данных разрешила сохранение
-                await signInWithEmailAndPassword(auth, email, password);
-            } catch (err) {
-                if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
-                    try {
-                        await createUserWithEmailAndPassword(auth, email, password);
-                    } catch (createErr) {
-                        console.error('[UC-AUTH] Create user failed:', createErr);
-                    }
-                } else {
-                    console.error('[UC-AUTH] Firebase Login failed:', err);
-                }
+        loginError.textContent = '';
+
+        try {
+            await signInWithEmailAndPassword(auth, email, password);
+            // Успешный вход: скрывать форму будет onAuthStateChanged
+        } catch (err) {
+            console.error('Login error:', err);
+            if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
+                loginError.textContent = 'Неверный email или пароль';
+            } else {
+                loginError.textContent = 'Ошибка: ' + err.message;
             }
-            
-            // В любом случае пускаем в интерфейс
-            localStorage.setItem('uc_auth_bypass', 'true');
-            document.getElementById('login-password').value = '';
-            authScreen.classList.add('hidden');
-            appEl.classList.remove('hidden');
-            bootApp();
-        } else {
-            loginError.textContent = 'Неверный логин или пароль';
+            loginBtn.disabled = false;
+            loginBtn.textContent = 'Войти';
         }
-        
-        loginBtn.disabled = false;
-        loginBtn.textContent = 'Войти';
     });
 
     // Добавляем вход по кнопке Enter
@@ -1027,9 +1017,9 @@ function initAuth() {
 
     // Listen for auth state
     onAuthStateChanged(auth, (user) => {
-        if (user || localStorage.getItem('uc_auth_bypass') === 'true') {
-            console.log('[UC-AUTH] User signed in or bypassed');
-            if (user) currentUser = user;
+        if (user) {
+            console.log('[UC-AUTH] User signed in');
+            currentUser = user;
             authScreen.classList.add('hidden');
             appEl.classList.remove('hidden');
             bootApp();
@@ -1045,7 +1035,6 @@ function initAuth() {
 
 function handleLogout() {
     if (confirm('Выйти из аккаунта?')) {
-        localStorage.removeItem('uc_auth_bypass');
         signOut(auth).then(() => {
             console.log('[UC-AUTH] Signed out');
             window.location.reload();
