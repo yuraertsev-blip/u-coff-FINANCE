@@ -860,3 +860,151 @@ main#view-container {
         background: transparent;
     }
 }
+
+/* === Toast Notifications === */
+.dc-toast {
+    position: fixed;
+    bottom: 100px;
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    padding: 12px 24px;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 500;
+    color: white;
+    z-index: 9999;
+    opacity: 0;
+    transition: opacity 0.3s ease, transform 0.3s ease;
+    max-width: 90%;
+    text-align: center;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+    pointer-events: none;
+}
+.dc-toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}
+.dc-toast-info {
+    background: var(--text-main);
+}
+.dc-toast-error {
+    background: var(--accent-expense);
+}
+.dc-toast-success {
+    background: var(--accent-income);
+}
+
+/* === Auth Screen === */
+#auth-screen {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: linear-gradient(135deg, #0F172A 0%, #1E293B 50%, #334155 100%);
+    z-index: 5000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+}
+#auth-screen.hidden {
+    display: none;
+}
+.auth-card {
+    background: var(--card-bg);
+    border-radius: 20px;
+    padding: 40px 28px;
+    width: 100%;
+    max-width: 380px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    animation: modalScale 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+.auth-logo {
+    text-align: center;
+    margin-bottom: 32px;
+}
+.auth-logo h1 {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--text-main);
+    margin-top: 12px;
+}
+.auth-logo p {
+    font-size: 14px;
+    color: var(--text-muted);
+    margin-top: 4px;
+}
+.auth-field {
+    margin-bottom: 16px;
+}
+.auth-field label {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-muted);
+    display: block;
+    margin-bottom: 6px;
+}
+.auth-field input {
+    width: 100%;
+    padding: 14px 16px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    font-size: 16px;
+    font-family: inherit;
+    color: var(--text-main);
+    outline: none;
+    transition: border-color var(--trans);
+}
+.auth-field input:focus {
+    border-color: var(--text-main);
+}
+.auth-btn {
+    width: 100%;
+    padding: 16px;
+    background: var(--text-main);
+    color: white;
+    border: none;
+    border-radius: 12px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    margin-top: 8px;
+    transition: opacity var(--trans);
+}
+.auth-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+.auth-btn:active:not(:disabled) {
+    opacity: 0.8;
+}
+.auth-error {
+    color: var(--accent-expense);
+    font-size: 13px;
+    font-weight: 500;
+    text-align: center;
+    min-height: 20px;
+    margin-top: 12px;
+}
+
+/* Logout button in settings */
+.btn-logout {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    background: transparent;
+    border: 1px solid var(--accent-expense);
+    color: var(--accent-expense);
+    padding: 14px;
+    border-radius: 12px;
+    font-weight: 500;
+    font-size: 15px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: var(--trans);
+}
+.btn-logout:active {
+    background: rgba(225, 29, 72, 0.05);
+}

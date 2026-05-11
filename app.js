@@ -1,9 +1,13 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
 import { getFirestore, doc, onSnapshot, setDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
+
 // === Firebase Init ===
-console.log("App Version: 2.1.0 - New Database");
-let app, db;
+console.log("App Version: 3.0.0 - U Coffee (with Auth)");
+let app, db, auth;
 let unsubscribeSnapshot = null;
+let currentUser = null;
+
 try {
     const firebaseConfig = {
       apiKey: "AIzaSyA3dem18WFrq2mNA1_pCJfIWBYcGsS0i6Q",
@@ -16,8 +20,30 @@ try {
     };
     app = initializeApp(firebaseConfig);
     db = getFirestore(app);
+    auth = getAuth(app);
+    console.log('[UC-INIT] Firebase initialized, projectId:', firebaseConfig.projectId);
 } catch (e) {
-    console.error("Firebase init fallback error:", e);
+    console.error("[UC-INIT] Firebase init fallback error:", e);
+    showToast('Ошибка инициализации Firebase', 'error');
+}
+
+// === Toast Notification System ===
+function showToast(message, type = 'info', durationMs = 4000) {
+    const existing = document.getElementById('dc-toast');
+    if (existing) existing.remove();
+
+    const toast = document.createElement('div');
+    toast.id = 'dc-toast';
+    toast.className = `dc-toast dc-toast-${type}`;
+    toast.textContent = message;
+    document.body.appendChild(toast);
+
+    // Trigger animation
+    requestAnimationFrame(() => toast.classList.add('show'));
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 300);
+    }, durationMs);
 }
 // === State & LocalStorage ===
 const STORE_PREFIX = 'u_coffee';
@@ -80,15 +106,32 @@ function loadState() {
         }
     }, (error) => {
         console.error("Error syncing data:", error);
+        showToast('Ошибка загрузки данных: ' + error.message, 'error');
     });
 }
 function saveState(key) {
-    setDoc(doc(db, 'coffee_db', 'main_state'), {
+    const payload = {
         categories: state.categories,
         income: state.income,
         expenses: state.expenses
-    }, { merge: true })
-    .catch((error) => console.error("Error saving data:", error));
+    };
+
+    const payloadSize = JSON.stringify(payload).length;
+    if (payloadSize > 900000) {
+        showToast('Внимание: база данных почти заполнена', 'error', 6000);
+    }
+
+    setDoc(doc(db, 'coffee_db', 'main_state'), payload, { merge: true })
+    .catch((error) => {
+        console.error("Error saving data:", error);
+        showToast('Ошибка сохранения: ' + error.message, 'error');
+    });
+}
+
+let _saveTimer = null;
+function debouncedSave() {
+    clearTimeout(_saveTimer);
+    _saveTimer = setTimeout(() => saveState(), 600);
 }
 // === Utils ===
 function formatDateStr(date) {
@@ -243,7 +286,7 @@ function renderDataEntry() {
             const dateStr = formatDateStr(state.currentDate);
             if (!state.income[dateStr]) state.income[dateStr] = { cash: 0, terminal: 0 };
             state.income[dateStr].cash = val;
-            saveState('income');
+            debouncedSave();
             updateIncomeDayTotal();
         });
         // Refresh calendar only on blur to avoid scroll jumps
@@ -258,7 +301,7 @@ function renderDataEntry() {
             const dateStr = formatDateStr(state.currentDate);
             if (!state.income[dateStr]) state.income[dateStr] = { cash: 0, terminal: 0 };
             state.income[dateStr].terminal = val;
-            saveState('income');
+            debouncedSave();
             updateIncomeDayTotal();
         });
         terminalInput.addEventListener('blur', () => renderCalendar());
@@ -313,7 +356,7 @@ function renderDataEntry() {
         });
         setupInputFormatting(amountInput, (val) => {
             const dateStr = formatDateStr(state.currentDate);
-            updateExpense(dateStr, idx, 'amount', val);
+            updateExpenseLocal(dateStr, idx, 'amount', val);
         });
         clearBtn.addEventListener('click', () => {
             const dateStr = formatDateStr(state.currentDate);
@@ -402,6 +445,18 @@ function updateExpense(dateStr, index, field, value) {
         // Smart focus: only update total text, don't rebuild expense table
         updateExpenseTotal(dateStr);
         // Defer calendar dot update to avoid scroll jumps during typing
+    }
+}
+
+function updateExpenseLocal(dateStr, index, field, value) {
+    if (!state.expenses[dateStr]) {
+        state.expenses[dateStr] = Array(15).fill().map(() => ({ name: '', categoryId: '', amount: 0 }));
+    }
+    state.expenses[dateStr][index][field] = value;
+    debouncedSave();
+    
+    if (field === 'amount') {
+        updateExpenseTotal(dateStr);
     }
 }
 function updateExpenseTotal(dateStr) {
@@ -911,15 +966,115 @@ function renderSettings() {
         reader.readAsText(file);
     };
 }
+// === Auth ===
+function initAuth() {
+    const authScreen = document.getElementById('auth-screen');
+    const appEl = document.getElementById('app');
+    const loginBtn = document.getElementById('login-btn');
+    const loginError = document.getElementById('login-error');
+
+    if (!authScreen || !loginBtn) {
+        // Auth UI not present — run in open mode (legacy)
+        console.log('[UC-AUTH] Auth screen not found, running in open mode');
+        bootApp();
+        return;
+    }
+
+    loginBtn.addEventListener('click', async () => {
+        const username = document.getElementById('login-username').value.trim().toLowerCase();
+        const password = document.getElementById('login-password').value;
+        loginError.textContent = '';
+        loginBtn.disabled = true;
+        loginBtn.textContent = 'Вход...';
+        
+        if (username === 'coffee' && password === '2015redbull@') {
+            const email = 'ucoffee@ucoffee.app';
+            try {
+                // Пытаемся авторизоваться в Firebase, чтобы база данных разрешила сохранение
+                await signInWithEmailAndPassword(auth, email, password);
+            } catch (err) {
+                if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
+                    try {
+                        await createUserWithEmailAndPassword(auth, email, password);
+                    } catch (createErr) {
+                        console.error('[UC-AUTH] Create user failed:', createErr);
+                    }
+                } else {
+                    console.error('[UC-AUTH] Firebase Login failed:', err);
+                }
+            }
+            
+            // В любом случае пускаем в интерфейс
+            localStorage.setItem('uc_auth_bypass', 'true');
+            document.getElementById('login-password').value = '';
+            authScreen.classList.add('hidden');
+            appEl.classList.remove('hidden');
+            bootApp();
+        } else {
+            loginError.textContent = 'Неверный логин или пароль';
+        }
+        
+        loginBtn.disabled = false;
+        loginBtn.textContent = 'Войти';
+    });
+
+    // Добавляем вход по кнопке Enter
+    document.getElementById('login-password').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            loginBtn.click();
+        }
+    });
+
+    // Listen for auth state
+    onAuthStateChanged(auth, (user) => {
+        if (user || localStorage.getItem('uc_auth_bypass') === 'true') {
+            console.log('[UC-AUTH] User signed in or bypassed');
+            if (user) currentUser = user;
+            authScreen.classList.add('hidden');
+            appEl.classList.remove('hidden');
+            bootApp();
+        } else {
+            console.log('[UC-AUTH] No user — showing login');
+            currentUser = null;
+            if (unsubscribeSnapshot) unsubscribeSnapshot();
+            authScreen.classList.remove('hidden');
+            appEl.classList.add('hidden');
+        }
+    });
+}
+
+function handleLogout() {
+    if (confirm('Выйти из аккаунта?')) {
+        localStorage.removeItem('uc_auth_bypass');
+        signOut(auth).then(() => {
+            console.log('[UC-AUTH] Signed out');
+            window.location.reload();
+        }).catch(() => {
+            window.location.reload();
+        });
+    }
+}
+// Expose to global scope for inline onclick in HTML (module scripts are scoped)
+window.handleLogout = handleLogout;
+
+let appBooted = false;
+function bootApp() {
+    if (appBooted) return; // Prevent double init
+    appBooted = true;
+    initNavigation();
+    initCalendar();
+    initModal();
+    renderDataEntry();
+    loadState();
+    console.log('[UC-INIT] App booted successfully');
+}
+
 // === Init ===
 document.addEventListener('DOMContentLoaded', () => {
     try {
-        initNavigation();
-        initCalendar();
-        initModal();
-        renderDataEntry(); // Build UI structure once
-        loadState();       // Connect Firebase and sync data
+        initAuth();
     } catch (e) {
-        console.error("Critical error during app init:", e);
+        console.error('[UC-INIT] Critical Init Error:', e);
+        showToast('Критическая ошибка запуска', 'error');
     }
 });

@@ -14,6 +14,29 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
 </head>
 <body>
+    <!-- Auth Screen (hidden until auth is enabled — see initAuth() in app.js) -->
+    <div id="auth-screen" class="hidden">
+        <div class="auth-card">
+            <div class="auth-logo">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#0F172A" stroke-width="1.5">
+                    <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+                </svg>
+                <h1>Ю Кофе</h1>
+                <p>Учет финансов</p>
+            </div>
+            <div class="auth-field">
+                <label>Логин</label>
+                <input type="text" id="login-username" placeholder="Введите логин" autocomplete="username">
+            </div>
+            <div class="auth-field">
+                <label>Пароль</label>
+                <input type="password" id="login-password" placeholder="Введите пароль" autocomplete="current-password">
+            </div>
+            <button id="login-btn" class="auth-btn">Войти</button>
+            <div id="login-error" class="auth-error"></div>
+        </div>
+    </div>
+
     <div id="app">
         <!-- Views will be dynamically injected here -->
         <main id="view-container">
@@ -155,6 +178,12 @@
                             <input type="file" id="input-import-backup" accept=".json" style="display: none;">
                         </div>
                     </div>
+                    <div class="card" id="logout-card" style="display:none; margin-top: 16px;">
+                        <button id="btn-logout" class="btn-logout" onclick="handleLogout()">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+                            Выйти из аккаунта
+                        </button>
+                    </div>
                 </div>
             </section>
         </main>
@@ -214,11 +243,16 @@
     
     <script>
         if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('./sw.js')
-                    .then((reg) => console.log('SW registered'))
-                    .catch((err) => console.log('SW failed: ', err));
+            navigator.serviceWorker.getRegistrations().then(function(registrations) {
+                for(let registration of registrations) {
+                    registration.unregister();
+                }
             });
+            if (caches) {
+                caches.keys().then(function(names) {
+                    for (let name of names) caches.delete(name);
+                });
+            }
         }
     </script>
     <script type="module" src="app.js"></script>
