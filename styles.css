@@ -895,18 +895,18 @@ main#view-container {
 }
 
 /* === Auth Screen === */
-#auth-screen {
+.auth-overlay {
     position: fixed;
     top: 0; left: 0; right: 0; bottom: 0;
     background: linear-gradient(135deg, #0F172A 0%, #1E293B 50%, #334155 100%);
-    z-index: 5000;
+    z-index: 9999;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     padding: 24px;
 }
-#auth-screen.hidden {
+.auth-overlay.hidden {
     display: none;
 }
 .auth-card {

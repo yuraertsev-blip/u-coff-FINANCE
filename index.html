@@ -14,8 +14,8 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
 </head>
 <body>
-    <!-- Auth Screen (hidden until auth is enabled — see initAuth() in app.js) -->
-    <div id="auth-screen" class="hidden">
+    <!-- Экран авторизации Firebase -->
+    <div id="auth-screen" class="auth-overlay hidden">
         <div class="auth-card">
             <div class="auth-logo">
                 <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#0F172A" stroke-width="1.5">
@@ -25,8 +25,8 @@
                 <p>Учет финансов</p>
             </div>
             <div class="auth-field">
-                <label>Логин</label>
-                <input type="text" id="login-username" placeholder="Введите логин" autocomplete="username">
+                <label>Email</label>
+                <input type="email" id="login-email" placeholder="admin@yucoffee.app" autocomplete="email">
             </div>
             <div class="auth-field">
                 <label>Пароль</label>
@@ -37,7 +37,7 @@
         </div>
     </div>
 
-    <div id="app">
+    <div id="app" class="hidden">
         <!-- Views will be dynamically injected here -->
         <main id="view-container">
             <!-- Data Entry View (Default) -->
