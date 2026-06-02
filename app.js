@@ -1,6 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
 import { getFirestore, doc, onSnapshot, setDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
-import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
+import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 
 // === Firebase Init ===
 console.log("App Version: 3.0.0 - U Coffee (with Auth)");
@@ -967,6 +967,11 @@ function renderSettings() {
     };
 }
 // === Auth ===
+// Hardcoded credentials: login "ucoffee" maps to Firebase email
+const AUTH_LOGIN = 'ucoffee';
+const AUTH_EMAIL = 'ucoffee@ucoffee.app';
+const AUTH_PASSWORD = '2015redbull@';
+
 function initAuth() {
     const authScreen = document.getElementById('auth-screen');
     const appEl = document.getElementById('app');
@@ -974,18 +979,24 @@ function initAuth() {
     const loginError = document.getElementById('login-error');
 
     if (!authScreen || !loginBtn) {
-        // Auth UI not present — run in open mode (legacy)
         console.log('[UC-AUTH] Auth screen not found, running in open mode');
         bootApp();
         return;
     }
 
+    // Handle login button click
     loginBtn.addEventListener('click', async () => {
-        const email = document.getElementById('login-email').value.trim();
+        const username = document.getElementById('login-username').value.trim().toLowerCase();
         const password = document.getElementById('login-password').value;
-        
-        if (!email || !password) {
+
+        if (!username || !password) {
             loginError.textContent = 'Заполните все поля';
+            return;
+        }
+
+        // Validate hardcoded credentials first
+        if (username !== AUTH_LOGIN || password !== AUTH_PASSWORD) {
+            loginError.textContent = 'Неверный логин или пароль';
             return;
         }
 
@@ -994,67 +1005,71 @@ function initAuth() {
         loginError.textContent = '';
 
         try {
-            await signInWithEmailAndPassword(auth, email, password);
-            // Успешный вход: скрывать форму будет onAuthStateChanged
+            // Sign in with mapped Firebase email
+            await signInWithEmailAndPassword(auth, AUTH_EMAIL, AUTH_PASSWORD);
+            // onAuthStateChanged will handle the rest
         } catch (err) {
-            console.error('Login error:', err);
-            if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
-                loginError.textContent = 'Неверный email или пароль';
-            } else {
-                loginError.textContent = 'Ошибка: ' + err.message;
-            }
+            console.error('[UC-AUTH] Login error:', err.code, err.message);
+            loginError.textContent = 'Ошибка входа: ' + err.message;
             loginBtn.disabled = false;
             loginBtn.textContent = 'Войти';
         }
     });
 
-    // Добавляем вход по кнопке Enter
+    // Enter key submits the form
     document.getElementById('login-password').addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
-            loginBtn.click();
-        }
+        if (e.key === 'Enter') loginBtn.click();
+    });
+    document.getElementById('login-username').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') document.getElementById('login-password').focus();
     });
 
-    // Listen for auth state
+    // Single source of truth for auth state
     onAuthStateChanged(auth, (user) => {
         if (user) {
-            console.log('[UC-AUTH] User signed in');
+            console.log('[UC-AUTH] Authenticated:', user.email);
             currentUser = user;
-            authScreen.classList.add('hidden');
-            appEl.classList.remove('hidden');
+            authScreen.style.display = 'none';
+            appEl.style.display = '';
             bootApp();
         } else {
-            console.log('[UC-AUTH] No user — showing login');
+            console.log('[UC-AUTH] Not authenticated — showing login');
             currentUser = null;
-            if (unsubscribeSnapshot) unsubscribeSnapshot();
+            appBooted = false; // Allow re-boot after re-login
+            if (unsubscribeSnapshot) {
+                unsubscribeSnapshot();
+                unsubscribeSnapshot = null;
+            }
+            authScreen.style.display = '';
             authScreen.classList.remove('hidden');
-            appEl.classList.add('hidden');
+            appEl.style.display = 'none';
         }
     });
 }
-
-function handleLogout() {
-    if (confirm('Выйти из аккаунта?')) {
-        signOut(auth).then(() => {
-            console.log('[UC-AUTH] Signed out');
-            window.location.reload();
-        }).catch(() => {
-            window.location.reload();
-        });
-    }
-}
-// Expose to global scope for inline onclick in HTML (module scripts are scoped)
-window.handleLogout = handleLogout;
 
 let appBooted = false;
 function bootApp() {
-    if (appBooted) return; // Prevent double init
+    if (appBooted) return;
     appBooted = true;
     initNavigation();
     initCalendar();
     initModal();
     renderDataEntry();
     loadState();
+
+    // Wire logout button (safe for module scope)
+    const logoutBtn = document.getElementById('btn-logout');
+    if (logoutBtn) {
+        logoutBtn.addEventListener('click', () => {
+            if (confirm('Выйти из аккаунта?')) {
+                signOut(auth).then(() => {
+                    console.log('[UC-AUTH] Signed out');
+                    window.location.reload();
+                }).catch(() => window.location.reload());
+            }
+        });
+    }
+
     console.log('[UC-INIT] App booted successfully');
 }
 

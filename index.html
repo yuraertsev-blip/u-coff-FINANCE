@@ -25,8 +25,8 @@
                 <p>Учет финансов</p>
             </div>
             <div class="auth-field">
-                <label>Email</label>
-                <input type="email" id="login-email" placeholder="admin@yucoffee.app" autocomplete="email">
+                <label>Логин</label>
+                <input type="text" id="login-username" placeholder="Введите логин" autocomplete="username">
             </div>
             <div class="auth-field">
                 <label>Пароль</label>
@@ -37,7 +37,7 @@
         </div>
     </div>
 
-    <div id="app" class="hidden">
+    <div id="app" style="display:none;">
         <!-- Views will be dynamically injected here -->
         <main id="view-container">
             <!-- Data Entry View (Default) -->
@@ -178,8 +178,8 @@
                             <input type="file" id="input-import-backup" accept=".json" style="display: none;">
                         </div>
                     </div>
-                    <div class="card" id="logout-card" style="display:none; margin-top: 16px;">
-                        <button id="btn-logout" class="btn-logout" onclick="handleLogout()">
+                    <div class="card" style="margin-top: 16px;">
+                        <button id="btn-logout" class="btn-logout">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
                             Выйти из аккаунта
                         </button>
